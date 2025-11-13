@@ -1,0 +1,65 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macos
+.DS_Store
+*.pem
+
+# windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# local env files
+.env*.local
+.env
+
+# typescript
+*.tsbuildinfo
+
+# eas
+.eas-build-pre-install.sh
+
+# android
+*.apk
+*.aab
+
+# ios
+*.ipa
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
