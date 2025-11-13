@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.harmonicminds.neuroblockos"
+      "bundleIdentifier": "com.harmonicminds.neuroblockos",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.harmonicminds.neuroblockos",
