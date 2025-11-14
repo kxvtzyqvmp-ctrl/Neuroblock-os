@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface UserProfile {
   id: string;
@@ -52,8 +52,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     const initializeAuth = async () => {
+      // Skip Supabase initialization if not configured (e.g., in Expo Go without config)
+      if (!isSupabaseConfigured()) {
+        console.warn('[AuthContext] Supabase not configured, using mock authentication');
+        if (mounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) {
+            setIsLoading(false);
+          }
+          return;
+        }
 
         if (mounted) {
           if (currentSession) {
@@ -73,32 +90,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
-        if (mounted) {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
+    // Only set up auth state listener if Supabase is configured
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          (event, newSession) => {
+            if (mounted) {
+              setSession(newSession);
+              setUser(newSession?.user ?? null);
 
-          if (newSession?.user) {
-            loadUserProfile(newSession.user.id);
-          } else {
-            setProfile(null);
-          }
+              if (newSession?.user) {
+                loadUserProfile(newSession.user.id);
+              } else {
+                setProfile(null);
+              }
 
-          if (event === 'SIGNED_OUT') {
-            clearStoredSession();
+              if (event === 'SIGNED_OUT') {
+                clearStoredSession();
+              }
+            }
           }
-        }
+        );
+
+        return () => {
+          mounted = false;
+          subscription.unsubscribe();
+        };
+      } catch (error) {
+        console.error('Error setting up auth state listener:', error);
+        return () => {
+          mounted = false;
+        };
       }
-    );
+    }
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
   const loadUserProfile = async (userId: string) => {
+    if (!isSupabaseConfigured()) {
+      console.warn('[AuthContext] Supabase not configured, skipping profile load');
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -125,6 +161,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, displayName?: string) => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase not configured. Authentication is disabled.') };
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -155,6 +195,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase not configured. Authentication is disabled.') };
+    }
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -170,6 +214,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase not configured. Authentication is disabled.') };
+    }
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -184,6 +232,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithApple = async () => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase not configured. Authentication is disabled.') };
+    }
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
@@ -198,6 +250,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (!isSupabaseConfigured()) {
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      return;
+    }
+
     try {
       await supabase.auth.signOut();
       await clearStoredSession();
@@ -210,6 +269,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase not configured. Profile updates are disabled.') };
+    }
+
     try {
       if (!user) return { error: new Error('Not authenticated') };
 

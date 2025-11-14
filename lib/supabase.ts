@@ -1,11 +1,50 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import 'react-native-url-polyfill/auto';
 
-const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+// Get Supabase configuration from environment variables or expo config
+const supabaseUrl = 
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL || 
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  'https://placeholder.supabase.co'; // Fallback for development
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseAnonKey = 
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'; // Placeholder key for development
+
+// Check if we have valid Supabase credentials (not placeholders)
+const hasValidConfig = 
+  supabaseUrl && 
+  supabaseUrl !== 'https://placeholder.supabase.co' &&
+  supabaseUrl.startsWith('https://') &&
+  supabaseAnonKey && 
+  supabaseAnonKey !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+
+// Create Supabase client with fallback values if configuration is missing
+// This prevents the app from crashing when Supabase isn't configured
+let supabase: SupabaseClient;
+
+try {
+  // Always provide valid-looking URLs to pass Supabase validation
+  // The client will be created but won't work if using placeholder values
+  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  
+  if (!hasValidConfig) {
+    console.warn('[Supabase] Using placeholder configuration. Supabase features will not work. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to enable.');
+  }
+} catch (error) {
+  console.error('[Supabase] Failed to create client:', error);
+  // Create a minimal client that won't crash but won't work
+  supabase = createClient('https://placeholder.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0') as SupabaseClient;
+}
+
+export { supabase };
+
+// Export a helper to check if Supabase is properly configured
+export const isSupabaseConfigured = (): boolean => {
+  return hasValidConfig;
+};
 
 export interface DetoxSettings {
   id: string;
