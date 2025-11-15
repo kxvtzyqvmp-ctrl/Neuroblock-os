@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { saveDetoxSettings } from '@/lib/localStorage';
 import { UserDetoxSettings } from '@/types/setup';
 import SetupProgress from '@/components/SetupProgress';
 import Step1Welcome from '@/components/setup/Step1Welcome';
@@ -73,8 +73,8 @@ export default function SetupScreen() {
 
   const handleComplete = async () => {
     try {
-      const { error } = await supabase.from('detox_settings').insert([
-        {
+      // Save settings to local storage (offline-first approach)
+      await saveDetoxSettings({
           selected_apps: userSettings.selectedApps,
           daily_limit_minutes: userSettings.dailyLimitMinutes,
           active_schedule_type: userSettings.activeScheduleType,
@@ -82,16 +82,14 @@ export default function SetupScreen() {
           active_schedule_end: userSettings.activeScheduleEnd,
           pause_duration_seconds: userSettings.pauseDurationSeconds,
           is_active: true,
-        },
-      ]);
+      });
 
-      if (error) {
-        console.error('Error saving settings:', error);
-      }
-
+      // Navigate to dashboard after successful save
       router.replace('/dashboard');
     } catch (err) {
-      console.error('Unexpected error:', err);
+      console.error('[Setup] Error saving settings:', err);
+      // Still navigate to dashboard even on error (graceful degradation)
+      router.replace('/dashboard');
     }
   };
 

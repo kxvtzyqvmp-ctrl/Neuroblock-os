@@ -25,7 +25,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0B0B0B"
-      }
+      },
+      "permissions": [
+        "QUERY_ALL_PACKAGES",
+        "android.permission.PACKAGE_USAGE_STATS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -43,7 +47,9 @@
     "extra": {
       "eas": {
         "projectId": "06ce092c-e8c5-4055-a94a-2bcaeef77676"
-      }
+      },
+      "EXPO_PUBLIC_SUPABASE_URL": "https://nbwqwzesodququanqcyj.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_AyJLJgPUSCkuzGSb6Fepmg_w1AHcQ3z"
     },
     "owner": "thlangu"
   }

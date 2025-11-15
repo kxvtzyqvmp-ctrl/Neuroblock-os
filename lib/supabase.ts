@@ -1,6 +1,10 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
 import 'react-native-url-polyfill/auto';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { createClient, processLock, SupabaseClient } from '@supabase/supabase-js';
+
+import Constants from 'expo-constants';
 
 // Get Supabase configuration from environment variables or expo config
 const supabaseUrl = 
@@ -8,18 +12,23 @@ const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
   'https://placeholder.supabase.co'; // Fallback for development
 
-const supabaseAnonKey = 
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+const supabaseKey = 
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_KEY || 
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'; // Placeholder key for development
 
 // Check if we have valid Supabase credentials (not placeholders)
+const isPlaceholderKey = 
+  !supabaseKey ||
+  supabaseKey === 'YOUR_PUBLISHABLE_KEY_HERE' ||
+  supabaseKey === 'your_publishable_key_here' ||
+  supabaseKey === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+
 const hasValidConfig = 
   supabaseUrl && 
   supabaseUrl !== 'https://placeholder.supabase.co' &&
   supabaseUrl.startsWith('https://') &&
-  supabaseAnonKey && 
-  supabaseAnonKey !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+  !isPlaceholderKey;
 
 // Create Supabase client with fallback values if configuration is missing
 // This prevents the app from crashing when Supabase isn't configured
@@ -28,15 +37,41 @@ let supabase: SupabaseClient;
 try {
   // Always provide valid-looking URLs to pass Supabase validation
   // The client will be created but won't work if using placeholder values
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  supabase = createClient(
+    supabaseUrl,
+    supabaseKey,
+    {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+        lock: processLock,
+      },
+    }
+  );
   
   if (!hasValidConfig) {
-    console.warn('[Supabase] Using placeholder configuration. Supabase features will not work. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to enable.');
+    console.warn('[Supabase] Using placeholder configuration. Supabase features will not work. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_KEY to enable.');
+  } else {
+    console.log('[Supabase] Configuration loaded successfully');
   }
 } catch (error) {
   console.error('[Supabase] Failed to create client:', error);
   // Create a minimal client that won't crash but won't work
-  supabase = createClient('https://placeholder.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0') as SupabaseClient;
+  supabase = createClient(
+    'https://placeholder.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0',
+    {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+        lock: processLock,
+      },
+    }
+  ) as SupabaseClient;
 }
 
 export { supabase };

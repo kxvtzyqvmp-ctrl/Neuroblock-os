@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AppStateProvider } from '@/contexts/AppStateContext';
 import { initializeRevenueCat } from '@/lib/revenuecatInit';
 
 function RootNavigator() {
@@ -14,22 +14,13 @@ function RootNavigator() {
     <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="auth/signin" />
-        <Stack.Screen name="auth/signup" />
-        <Stack.Screen name="setup" />
-        <Stack.Screen name="dashboard" />
-        <Stack.Screen name="subscription" />
-        <Stack.Screen name="family" />
-        <Stack.Screen name="community" />
-        <Stack.Screen name="analytics" />
-        <Stack.Screen name="notifications" />
-        <Stack.Screen name="environment" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="paywall" />
+        <Stack.Screen name="home" />
+        <Stack.Screen name="schedules" />
+        <Stack.Screen name="settings" />
         <Stack.Screen name="appearance" />
-        <Stack.Screen name="modes" />
-        <Stack.Screen name="apps" />
-        <Stack.Screen name="more" />
-        <Stack.Screen name="permissions" />
-        <Stack.Screen name="diagnostics" />
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
@@ -66,9 +57,9 @@ export default function RootLayout() {
   return (
     <AppInitializer>
       <ThemeProvider>
-        <AuthProvider>
+        <AppStateProvider>
           <RootNavigator />
-        </AuthProvider>
+        </AppStateProvider>
       </ThemeProvider>
     </AppInitializer>
   );

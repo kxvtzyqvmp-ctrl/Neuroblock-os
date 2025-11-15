@@ -93,28 +93,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Only set up auth state listener if Supabase is configured
     if (isSupabaseConfigured()) {
       try {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          (event, newSession) => {
-            if (mounted) {
-              setSession(newSession);
-              setUser(newSession?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        if (mounted) {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
 
-              if (newSession?.user) {
-                loadUserProfile(newSession.user.id);
-              } else {
-                setProfile(null);
-              }
-
-              if (event === 'SIGNED_OUT') {
-                clearStoredSession();
-              }
-            }
+          if (newSession?.user) {
+            loadUserProfile(newSession.user.id);
+          } else {
+            setProfile(null);
           }
-        );
 
-        return () => {
-          mounted = false;
-          subscription.unsubscribe();
+          if (event === 'SIGNED_OUT') {
+            clearStoredSession();
+          }
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
         };
       } catch (error) {
         console.error('Error setting up auth state listener:', error);

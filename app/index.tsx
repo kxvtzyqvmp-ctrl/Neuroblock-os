@@ -1,12 +1,22 @@
+/**
+ * Root Entry Point - App Router
+ * 
+ * Routes based on app state:
+ * - Loading → Splash screen
+ * - Not onboarded → Onboarding flow
+ * - Onboarded, trial expired, no subscription → Paywall
+ * - Onboarded, trial active or subscribed → Dashboard
+ */
+
 import { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Shield } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAppState } from '@/contexts/AppStateContext';
 
-export default function SplashScreen() {
+export default function RootScreen() {
   const router = useRouter();
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, hasCompletedOnboarding, isTrialActive, hasSubscription } = useAppState();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
@@ -29,16 +39,22 @@ export default function SplashScreen() {
   useEffect(() => {
     if (!isLoading) {
       const timer = setTimeout(() => {
-        if (isAuthenticated) {
-          router.replace('/dashboard');
+        // Route based on app state
+        if (!hasCompletedOnboarding) {
+          // First time user - show onboarding
+          router.replace('/onboarding');
+        } else if (hasSubscription || isTrialActive) {
+          // User has subscription or trial is active - show home
+          router.replace('/home');
         } else {
-          router.replace('/auth/signin');
+          // Trial expired, no subscription - show paywall
+          router.replace('/paywall');
         }
       }, 1000);
 
       return () => clearTimeout(timer);
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, hasCompletedOnboarding, isTrialActive, hasSubscription]);
 
   return (
     <View style={styles.container}>

@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
 export type InsightCategory = 'motivation' | 'pattern' | 'suggestion' | 'milestone';
@@ -269,8 +270,12 @@ export const generateAIResponse = async (question: string): Promise<string> => {
       streaks: streaks || [],
     };
 
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl = 
+      Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL || 
+      process.env.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseKey = 
+      Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_KEY || 
+      process.env.EXPO_PUBLIC_SUPABASE_KEY;
 
     if (!supabaseUrl) {
       throw new Error('Supabase URL not configured');
@@ -279,7 +284,7 @@ export const generateAIResponse = async (question: string): Promise<string> => {
     const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

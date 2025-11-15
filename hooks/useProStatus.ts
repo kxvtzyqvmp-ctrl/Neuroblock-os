@@ -1,11 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { initializeRevenueCat, isRevenueCatInitialized, getRevenueCatInstance } from '@/lib/revenuecatInit';
 
 interface ProStatus {
   hasPro: boolean;
   isLoading: boolean;
   refresh: () => Promise<void>;
+}
+
+// Check if running in Expo Go
+function isExpoGo(): boolean {
+  try {
+    return Constants.appOwnership === 'expo' || 
+           Constants.executionEnvironment === 'storeClient';
+  } catch {
+    return false;
+  }
 }
 
 export function useProStatus(): ProStatus {
@@ -23,7 +34,8 @@ export function useProStatus(): ProStatus {
   }, []);
 
   const checkProStatus = useCallback(async () => {
-    if (Platform.OS === 'web') {
+    // Skip in web or Expo Go (RevenueCat not available)
+    if (Platform.OS === 'web' || isExpoGo()) {
       setHasPro(false);
       setIsLoading(false);
       return;
@@ -38,6 +50,7 @@ export function useProStatus(): ProStatus {
     try {
       const Purchases = getRevenueCatInstance();
       if (!Purchases) {
+        // In Expo Go, Purchases will be null - this is expected
         setHasPro(false);
         setIsLoading(false);
         return;
@@ -47,7 +60,7 @@ export function useProStatus(): ProStatus {
       const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
       setHasPro(isPro);
     } catch (error) {
-      console.error('[useProStatus] Error checking pro status:', error);
+      console.warn('[useProStatus] Error checking pro status (this is OK in Expo Go):', error);
       setHasPro(false);
     } finally {
       setIsLoading(false);
@@ -64,19 +77,24 @@ export function useProStatus(): ProStatus {
 
     checkProStatus();
 
-    if (Platform.OS !== 'web') {
+    // Only set up listener if not in Expo Go and Purchases is available
+    if (Platform.OS !== 'web' && !isExpoGo()) {
       const Purchases = getRevenueCatInstance();
       if (Purchases) {
-        const listener = Purchases.addCustomerInfoUpdateListener((customerInfo: any) => {
-          const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
-          setHasPro(isPro);
-        });
+        try {
+          const listener = Purchases.addCustomerInfoUpdateListener((customerInfo: any) => {
+            const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
+            setHasPro(isPro);
+          });
 
-        return () => {
-          if (listener && typeof listener.remove === 'function') {
-            listener.remove();
-          }
-        };
+          return () => {
+            if (listener && typeof listener.remove === 'function') {
+              listener.remove();
+            }
+          };
+        } catch (error) {
+          console.warn('[useProStatus] Error setting up listener:', error);
+        }
       }
     }
   }, [checkProStatus, isReady]);

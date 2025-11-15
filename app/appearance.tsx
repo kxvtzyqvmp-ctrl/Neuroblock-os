@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Check, Sun, Moon, Smartphone, Zap, Wind, Gauge } from 'lucide-react-native';
-import { useTheme, ThemeMode, AccentColor, AnimationSpeed } from '../contexts/ThemeContext';
-import FloatingNav from '../components/FloatingNav';
+import { useTheme, ThemeMode, AccentColor, AnimationSpeed } from '@/contexts/ThemeContext';
+import BottomTabNav from '@/components/BottomTabNav';
+import AuroraBackground from '@/components/shared/AuroraBackground';
 
 export default function AppearanceScreen() {
   const { themeMode, accentColor, animationSpeed, colors, setThemeMode, setAccentColor, setAnimationSpeed } = useTheme();
@@ -94,6 +95,7 @@ export default function AppearanceScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
+      <AuroraBackground />
 
       <ScrollView
         style={styles.scrollView}
@@ -208,8 +210,10 @@ export default function AppearanceScreen() {
           </View>
         </View>
 
-        <View style={{ height: 120 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      <BottomTabNav />
 
       {feedbackMessage !== '' && (
         <Animated.View
@@ -232,8 +236,6 @@ export default function AppearanceScreen() {
           <Text style={styles.feedbackText}>{feedbackMessage}</Text>
         </Animated.View>
       )}
-
-      <FloatingNav activeTab="more" />
     </View>
   );
 }
@@ -248,6 +250,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 100, // Space for bottom tab nav
   },
   header: {
     marginBottom: 32,

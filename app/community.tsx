@@ -12,14 +12,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Users, Plus, X, Send, Target, Calendar, TrendingUp, Heart } from 'lucide-react-native';
-import { supabase, UserProfile } from '@/lib/supabase';
 import FloatingNav from '@/components/FloatingNav';
 import AuroraBackground from '@/components/shared/AuroraBackground';
+import { getGuestProfile, updateGuestProfile } from '@/lib/localCommunityStorage';
+import type { GuestProfile, DetoxCircle, DetoxChallenge, ChallengeParticipant, CircleMessage } from '@/lib/localCommunityStorage';
 import {
-  DetoxCircle,
-  DetoxChallenge,
-  ChallengeParticipant,
-  CircleMessage,
   createCircle,
   joinCircleWithCode,
   leaveCircle,
@@ -34,7 +31,7 @@ import {
 export default function CommunityScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
   const [myCircle, setMyCircle] = useState<DetoxCircle | null>(null);
   const [myChallenge, setMyChallenge] = useState<{
     challenge: DetoxChallenge;
@@ -55,98 +52,83 @@ export default function CommunityScreen() {
 
   const loadCommunityData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Get or create guest profile (always succeeds)
+      const profile = await getGuestProfile();
+      setGuestProfile(profile);
 
-      if (!user) {
-        console.log('[Community] No authenticated user found');
-        setLoading(false);
-        return;
-      }
-
-      let { data: profile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (!profile) {
-        const { data: newProfile, error: insertError } = await supabase
-          .from('user_profiles')
-          .insert([{ user_id: user.id, role: null }])
-          .select()
-          .maybeSingle();
-
-        if (insertError) {
-          console.error('[Community] Error creating profile:', insertError);
-          setLoading(false);
-          return;
-        }
-
-        profile = newProfile;
-      }
-
-      if (!profile || !profile.id) {
-        console.error('[Community] Profile is invalid or missing ID');
-        setLoading(false);
-        return;
-      }
-
-      setUserProfile(profile);
-
-      const { data: circles } = await supabase
-        .from('detox_circles')
-        .select('*')
-        .contains('member_ids', [profile.id]);
-
-      if (circles && circles.length > 0) {
-        const circle = circles[0];
+      // Load circles and challenges from local storage
+      const circle = await loadUserCircle(profile.id);
+      if (circle) {
         setMyCircle(circle);
-
         await updateCircleStats(circle.id);
-
-        const { data: messages } = await supabase
-          .from('circle_messages')
-          .select('*')
-          .eq('circle_id', circle.id)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        setCircleMessages(messages || []);
+        
+        // Load messages for this circle
+        const messages = await loadCircleMessages(circle.id);
+        setCircleMessages(messages);
       }
 
-      const { data: participants } = await supabase
-        .from('challenge_participants')
-        .select('*, detox_challenges(*)')
-        .eq('user_profile_id', profile.id)
-        .eq('detox_challenges.status', 'active')
-        .maybeSingle();
-
-      if (participants && participants.detox_challenges) {
-        setMyChallenge({
-          challenge: participants.detox_challenges,
-          participant: participants,
-        });
-
-        await updateChallengeProgress(participants.id, participants.challenge_id);
+      // Load active challenge for user
+      const challenge = await loadUserChallenge(profile.id);
+      if (challenge) {
+        setMyChallenge(challenge);
+        await updateChallengeProgress(challenge.participant.id, challenge.challenge.id);
       }
     } catch (error) {
-      console.error('Error loading community data:', error);
+      console.error('[Community] Error loading community data:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Helper functions to load from local storage
+  const loadUserCircle = async (profileId: string): Promise<DetoxCircle | null> => {
+    const { getAllCircles } = await import('@/lib/localCommunityStorage');
+    const circles = await getAllCircles();
+    const userCircle = Object.values(circles).find(circle => 
+      circle.member_ids.includes(profileId)
+    );
+    return userCircle || null;
+  };
+
+  const loadCircleMessages = async (circleId: string): Promise<CircleMessage[]> => {
+    const { getCircleMessages } = await import('@/lib/localCommunityStorage');
+    return await getCircleMessages(circleId);
+  };
+
+  const loadUserChallenge = async (profileId: string): Promise<{
+    challenge: DetoxChallenge;
+    participant: ChallengeParticipant;
+  } | null> => {
+    const { getAllChallenges, getAllParticipants } = await import('@/lib/localCommunityStorage');
+    const challenges = await getAllChallenges();
+    const participants = await getAllParticipants();
+    
+    const userParticipant = Object.values(participants).find(p => 
+      p.user_profile_id === profileId
+    );
+    
+    if (!userParticipant) return null;
+    
+    const challenge = challenges[userParticipant.challenge_id];
+    if (!challenge || challenge.status !== 'active') return null;
+    
+    return { challenge, participant: userParticipant };
+  };
+
   const handleCreateCircle = async () => {
-    if (!userProfile?.id) {
-      console.error('[Community] Cannot create circle: no user profile');
-      return;
+    // Always proceed with guest profile
+    if (!guestProfile) {
+      const profile = await getGuestProfile();
+      setGuestProfile(profile);
     }
 
     setProcessing(true);
-    const circle = await createCircle(userProfile.id);
+    const profileId = guestProfile?.id || 'local-user';
+    const circle = await createCircle(profileId);
 
     if (circle) {
       setMyCircle(circle);
+      await loadCommunityData(); // Reload to get messages
     }
 
     setProcessing(false);
@@ -158,15 +140,17 @@ export default function CommunityScreen() {
       return;
     }
 
-    if (!userProfile?.id) {
-      setError('User profile not loaded. Please try again.');
-      return;
+    // Always proceed with guest profile
+    if (!guestProfile) {
+      const profile = await getGuestProfile();
+      setGuestProfile(profile);
     }
 
     setProcessing(true);
     setError('');
 
-    const circle = await joinCircleWithCode(inviteCode, userProfile.id);
+    const profileId = guestProfile?.id || 'local-user';
+    const circle = await joinCircleWithCode(inviteCode, profileId);
 
     if (circle) {
       setMyCircle(circle);
@@ -181,13 +165,14 @@ export default function CommunityScreen() {
   };
 
   const handleLeaveCircle = async () => {
-    if (!myCircle?.id || !userProfile?.id) {
-      console.error('[Community] Cannot leave circle: missing data');
+    if (!myCircle?.id) {
       return;
     }
 
+    // Always proceed with guest profile
+    const profileId = guestProfile?.id || 'local-user';
     setProcessing(true);
-    const success = await leaveCircle(myCircle.id, userProfile.id);
+    const success = await leaveCircle(myCircle.id, profileId);
 
     if (success) {
       setMyCircle(null);
@@ -199,13 +184,12 @@ export default function CommunityScreen() {
   };
 
   const handleSendEncouragement = async (message: string) => {
-    if (!myCircle?.id || !userProfile) {
-      console.error('[Community] Cannot send encouragement: missing data');
+    if (!myCircle?.id) {
       return;
     }
 
-    const displayName = userProfile.display_name || 'Member';
-    const success = await sendEncouragement(myCircle.id, displayName, message);
+    // Always use "You" for display (no profile needed)
+    const success = await sendEncouragement(myCircle.id, 'You', message);
 
     if (success) {
       setShowEncouragementModal(false);
@@ -214,26 +198,43 @@ export default function CommunityScreen() {
   };
 
   const handleStartChallenge = async (challengeType: string) => {
-    if (!userProfile?.id) {
-      console.error('[Community] Cannot start challenge: no user profile');
-      return;
+    // Always proceed - no profile validation needed
+    // Get or create guest profile automatically
+    if (!guestProfile) {
+      const profile = await getGuestProfile();
+      setGuestProfile(profile);
     }
 
     setProcessing(true);
+    setError(''); // Clear any previous errors
 
+    try {
+    const profileId = guestProfile?.id || 'local-user';
     const challenge = await createChallenge(
       challengeType,
       !!myCircle,
       myCircle?.id || null,
-      userProfile.id
+      profileId
     );
 
     if (challenge) {
+      // Update guest profile challenge history
+        const currentProfile = guestProfile || await getGuestProfile();
+        await updateGuestProfile({
+          challenge_history: [...currentProfile.challenge_history, challenge.id],
+        });
+      
       setShowChallengeModal(false);
       await loadCommunityData();
+      } else {
+        setError('Failed to start challenge. Please try again.');
     }
-
+    } catch (error) {
+      console.error('[Community] Error starting challenge:', error);
+      setError('An error occurred. Please try again.');
+    } finally {
     setProcessing(false);
+    }
   };
 
   if (loading) {
@@ -313,7 +314,9 @@ export default function CommunityScreen() {
                   <Text style={styles.messagesTitle}>Recent Messages</Text>
                   {circleMessages.slice(0, 5).map((msg) => (
                     <View key={msg.id} style={styles.messageItem}>
-                      <Text style={styles.messageSender}>{msg.sender_id}</Text>
+                      <Text style={styles.messageSender}>
+                        {msg.sender_id === 'local-user' || msg.sender_id === guestProfile?.id ? 'You' : msg.sender_id === 'system' ? 'System' : 'Member'}
+                      </Text>
                       <Text style={styles.messageText}>{msg.message_text}</Text>
                     </View>
                   ))}

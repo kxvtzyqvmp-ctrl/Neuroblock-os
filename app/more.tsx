@@ -11,14 +11,14 @@ import {
   Share,
   Alert,
 } from 'react-native';
-import { Sparkles, Headphones, Clock, Lock, Globe, Layers, Timer, FileSliders as Sliders, Brain, Circle as HelpCircle, Share2, Star, MessageCircle, Languages, Music, Shield, Eye, LogOut } from 'lucide-react-native';
+import { Sparkles, Headphones, Lock, Layers, Timer, FileSliders as Sliders, Brain, Circle as HelpCircle, Share2, Star, MessageCircle, Languages, Shield, Eye, RefreshCw } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import AuroraBackground from '@/components/shared/AuroraBackground';
 import FloatingNav from '@/components/FloatingNav';
 import SectionPanel from '@/components/more/SectionPanel';
 import * as Haptics from 'expo-haptics';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAppState } from '@/contexts/AppStateContext';
 
 interface MenuItem {
   icon: any;
@@ -30,7 +30,7 @@ interface MenuItem {
 
 export default function MoreScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { resetApp } = useAppState();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const footerAnim = useRef(new Animated.Value(0)).current;
@@ -79,23 +79,22 @@ export default function MoreScreen() {
   const wellnessToolkit: MenuItem[] = [
     { icon: Sparkles, label: 'Digital Reset Tips', color: '#8E89FB', route: '/tips' },
     { icon: Headphones, label: 'Offscreen Activities', color: '#4ED4C7', route: '/activities' },
-    { icon: Clock, label: 'Quick Focus Block', color: '#7C9DD9', route: '/quick-focus' },
+    { icon: Timer, label: 'Detox Timer', color: '#7C9DD9', route: '/detox-timer' },
     { icon: Lock, label: 'App Control & Limits', color: '#A3A1FF', route: '/apps' },
-    { icon: Globe, label: 'Web Detox Mode', color: '#5AE38C', route: '/web-detox' },
   ];
 
-  const handleLogout = async () => {
+  const handleResetApp = async () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out? Your data is safely stored and will be available when you sign back in.',
+      'Reset App',
+      'Are you sure you want to reset the app? This will clear all settings and data. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: 'Reset',
           style: 'destructive',
           onPress: async () => {
-            await signOut();
-            router.replace('/auth/signin');
+            await resetApp();
+            router.replace('/onboarding');
           },
         },
       ]
@@ -107,7 +106,7 @@ export default function MoreScreen() {
     { icon: Timer, label: 'Detox Timer Settings', color: '#7C9DD9', route: '/setup' },
     { icon: Sliders, label: 'Appearance Settings', color: '#4ED4C7', route: '/appearance' },
     { icon: Brain, label: 'AI Insights & Analytics', color: '#A3A1FF', route: '/analytics' },
-    { icon: LogOut, label: 'Sign Out', color: '#F87171', action: handleLogout },
+    { icon: RefreshCw, label: 'Reset App', color: '#F87171', action: handleResetApp },
   ];
 
   const handleShareApp = async () => {
@@ -159,31 +158,12 @@ export default function MoreScreen() {
     );
   };
 
-  const handleFocusSoundtrack = () => {
-    Alert.alert(
-      'Focus Soundtrack',
-      'Choose your perfect focus soundtrack to enhance your detox sessions.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open Spotify',
-          onPress: () => Linking.openURL('https://open.spotify.com/playlist/focus'),
-        },
-        {
-          text: 'Open Apple Music',
-          onPress: () => Linking.openURL('https://music.apple.com/browse'),
-        },
-      ]
-    );
-  };
-
   const supportCommunity: MenuItem[] = [
     { icon: HelpCircle, label: 'FAQs & Help Center', color: '#7C9DD9', action: () => Linking.openURL('https://neuroblockos.app/help') },
     { icon: Share2, label: 'Share NeuroBlock OS', color: '#5AE38C', action: handleShareApp },
     { icon: Star, label: 'Leave a Review', color: '#FECF5E', action: handleLeaveReview },
     { icon: MessageCircle, label: 'Join Beta & Feedback', color: '#A3A1FF', action: handleJoinBeta },
     { icon: Languages, label: 'Translate NeuroBlock OS', color: '#8E89FB', action: handleTranslate },
-    { icon: Music, label: 'Focus Soundtrack', color: '#4ED4C7', action: handleFocusSoundtrack },
   ];
 
   return (

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Clock, HandHelping, Play, Square, Settings2, Crown, Shield, Users, TrendingUp, RefreshCw, Bell, Sparkles } from 'lucide-react-native';
-import { supabase, DetoxSettings, DailyStats, FocusSession, AIInsight, UserSubscription } from '@/lib/supabase';
+import { getDetoxSettings, getDailyStats, getAllFocusSessions, getAllAIInsights, saveAIInsight, saveFocusSession, saveDailyStats } from '@/lib/localStorage';
+import type { DetoxSettings, DailyStats, FocusSession, AIInsight } from '@/lib/localStorage';
 import { useProStatus } from '@/hooks/useProStatus';
 import BottomNav from '@/components/BottomNav';
 import FloatingNav from '@/components/FloatingNav';
@@ -29,7 +30,7 @@ export default function DashboardScreen() {
   const [activeFocusSession, setActiveFocusSession] = useState<FocusSession | null>(null);
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [focusElapsed, setFocusElapsed] = useState(0);
-  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+  // Subscription is managed via RevenueCat (useProStatus hook)
   const [dailyInsight, setDailyInsight] = useState<{ message: string; category: string } | null>(null);
   const [streaks, setStreaks] = useState<{ focus: number; detox: number }>({ focus: 0, detox: 0 });
   const [lastSync, setLastSync] = useState<string>('Checking...');
@@ -37,7 +38,7 @@ export default function DashboardScreen() {
   const [activeNotification, setActiveNotification] = useState<NotificationType | null>(null);
   const [lastNotificationTime, setLastNotificationTime] = useState<string>('Never');
 
-  const isPremium = hasPro || (subscription?.plan === 'premium' && subscription?.is_active);
+  const isPremium = hasPro; // Subscription managed via RevenueCat
 
   useEffect(() => {
     loadDashboardData();
@@ -101,56 +102,34 @@ export default function DashboardScreen() {
 
   const loadDashboardData = async () => {
     try {
-      const { data: subscriptionData } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .maybeSingle();
-
-      setSubscription(subscriptionData);
-
-      const { data: settingsData } = await supabase
-        .from('detox_settings')
-        .select('*')
-        .eq('is_active', true)
-        .maybeSingle();
-
+      // Load data from local storage (offline-first approach)
+      const settingsData = await getDetoxSettings();
       setSettings(settingsData);
 
       const today = new Date().toISOString().split('T')[0];
-      const { data: statsData } = await supabase
-        .from('daily_stats')
-        .select('*')
-        .eq('date', today)
-        .maybeSingle();
+      let statsData = await getDailyStats(today);
 
+      // Create default stats if none exist
       if (!statsData && settingsData) {
-        const { data: newStats } = await supabase
-          .from('daily_stats')
-          .insert([
-            {
+        statsData = {
               date: today,
               time_saved_minutes: 0,
               mindful_pauses_count: 0,
               apps_opened_count: 0,
               focus_minutes: 0,
-            },
-          ])
-          .select()
-          .single();
+          updated_at: new Date().toISOString(),
+        };
 
-        setDailyStats(newStats);
+        setDailyStats(statsData);
       } else {
         setDailyStats(statsData);
       }
 
-      const { data: activeSession } = await supabase
-        .from('focus_sessions')
-        .select('*')
-        .is('end_time', null)
-        .maybeSingle();
-
+      // Load active focus session from local storage
+      const allSessions = await getAllFocusSessions();
+      const activeSession = Object.values(allSessions).find(
+        (s: FocusSession) => s.end_time === null
+      ) || null;
       setActiveFocusSession(activeSession);
 
       if (activeSession) {
@@ -160,52 +139,35 @@ export default function DashboardScreen() {
         setFocusElapsed(elapsed);
       }
 
-      const { data: insightsData } = await supabase
-        .from('ai_insights')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(3);
+      // Load AI insights from local storage
+      const allInsights = await getAllAIInsights();
+      const insightsArray = Object.values(allInsights)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 3);
 
-      if (insightsData && insightsData.length > 0) {
-        setInsights(insightsData);
+      if (insightsArray.length > 0) {
+        setInsights(insightsArray);
       } else {
+        // Generate sample insights if none exist
         const generatedInsights = await generateInsights();
-
         if (generatedInsights.length > 0) {
-          const insightsToSave = generatedInsights.map(insight => ({
+          const insightsToSave = generatedInsights.map((insight, index) => ({
+            id: `insight_${Date.now()}_${index}`,
             insight_text: insight.message,
-            insight_type: insight.type,
-            insight_category: insight.category,
-            action_data: insight.actionData || null,
+            insight_type: insight.type as 'progress' | 'streak' | 'suggestion',
+            is_read: false,
+            created_at: new Date().toISOString(),
           }));
-
-          const { data: savedInsights } = await supabase
-            .from('ai_insights')
-            .insert(insightsToSave)
-            .select();
-
-          if (savedInsights) {
-            setInsights(savedInsights);
-          }
-        } else {
-          await generateSampleInsights(settingsData, statsData);
+          setInsights(insightsToSave);
         }
       }
 
-      await updateStreaks();
-
-      const { data: streakData } = await supabase
-        .from('user_streaks')
-        .select('*');
-
-      if (streakData) {
-        const focusStreak = streakData.find(s => s.streak_type === 'focus');
-        const detoxStreak = streakData.find(s => s.streak_type === 'detox_consistency');
+      // Streaks are calculated locally for now
+      // TODO: Implement streak calculation in local storage
         setStreaks({
-          focus: focusStreak?.current_streak || 0,
-          detox: detoxStreak?.current_streak || 0,
+        focus: 0,
+        detox: 0,
         });
-      }
 
       const aiInsights = await generateInsights();
       if (aiInsights.length > 0) {
@@ -256,28 +218,37 @@ export default function DashboardScreen() {
     });
 
     try {
-      const { data: newInsights } = await supabase
-        .from('ai_insights')
-        .insert(sampleInsights)
-        .select();
-
-      if (newInsights) {
-        setInsights(newInsights);
+      // Save insights to local storage
+      const savedInsights: AIInsight[] = [];
+      for (const insight of sampleInsights) {
+        const saved: AIInsight = {
+          id: `insight_${Date.now()}_${Math.random()}`,
+          insight_text: insight.insight_text,
+          insight_type: insight.insight_type,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        };
+        await saveAIInsight(saved);
+        savedInsights.push(saved);
       }
+      setInsights(savedInsights);
     } catch (error) {
       console.error('Error saving sample insights:', error);
-      setInsights(sampleInsights as any);
+      setInsights([]);
     }
   };
 
   const startFocusSession = async () => {
     try {
-      const { data: newSession } = await supabase
-        .from('focus_sessions')
-        .insert([{ start_time: new Date().toISOString() }])
-        .select()
-        .single();
+      const newSession: FocusSession = {
+        id: `session_${Date.now()}`,
+        start_time: new Date().toISOString(),
+        end_time: null,
+        duration_minutes: null,
+        created_at: new Date().toISOString(),
+      };
 
+      await saveFocusSession(newSession);
       setActiveFocusSession(newSession);
       setFocusElapsed(0);
 
@@ -298,22 +269,20 @@ export default function DashboardScreen() {
 
       await deactivateFocusEnvironment();
 
-      await supabase
-        .from('focus_sessions')
-        .update({
+      // Update focus session in local storage
+      const updatedSession: FocusSession = {
+        ...activeFocusSession,
           end_time: endTime,
           duration_minutes: durationMinutes,
-        })
-        .eq('id', activeFocusSession.id);
+      };
+      await saveFocusSession(updatedSession);
 
+      // Update daily stats in local storage
       if (dailyStats) {
-        await supabase
-          .from('daily_stats')
-          .update({
+        const today = new Date().toISOString().split('T')[0];
+        await saveDailyStats(today, {
             focus_minutes: dailyStats.focus_minutes + durationMinutes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', dailyStats.id);
+        });
       }
 
       setActiveFocusSession(null);

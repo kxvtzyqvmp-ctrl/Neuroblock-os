@@ -5,13 +5,13 @@ export const SUBSCRIPTION_PLANS = {
     price: 0,
     billingCycle: null,
     features: [
-      '3 app blocks',
+      '7 app blocks',
       'Daily detox timer',
       'Manual focus sessions',
       'Basic insights',
     ] as string[],
     limitations: {
-      maxAppBlocks: 3,
+      maxAppBlocks: 7,
       aiInsights: false,
       familyLinking: false,
       customSchedules: false,
