@@ -453,17 +453,33 @@ export class BlockingEngine {
     metadata: Record<string, any> = {}
   ): Promise<void> {
     try {
+      // Log to Supabase (if user is authenticated)
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (user) {
+        await supabase.from('blocking_events').insert({
+          user_id: user.id,
+          event_type: eventType,
+          app_id: appId,
+          domain,
+          state: this.state.currentState,
+          metadata,
+        });
+      }
 
-      await supabase.from('blocking_events').insert({
-        user_id: user.id,
-        event_type: eventType,
-        app_id: appId,
-        domain,
-        state: this.state.currentState,
-        metadata,
-      });
+      // Also log to local analytics for offline-first tracking
+      if (eventType === 'block_triggered' && appId) {
+        try {
+          const { logBlockEvent } = await import('@/lib/analytics');
+          await logBlockEvent({
+            appId,
+            bundleId: appId, // Use appId as bundleId if bundleId not available
+            durationSeconds: metadata.durationSeconds,
+          });
+        } catch (analyticsError) {
+          console.error('BlockingEngine: Failed to log to analytics:', analyticsError);
+          // Don't fail if analytics logging fails
+        }
+      }
     } catch (error) {
       console.error('BlockingEngine: Failed to log event', error);
     }

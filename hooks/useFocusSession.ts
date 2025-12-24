@@ -16,6 +16,7 @@ import { Platform, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllFocusSessions, saveFocusSession, getDetoxSettings, saveDetoxSettings } from '@/lib/localStorage';
 import { triggerFocusReminder } from '@/lib/localNotifications';
+import { logFocusSession } from '@/lib/analytics';
 import type { FocusSession, DetoxSettings } from '@/lib/localStorage';
 
 interface UseFocusSessionResult {
@@ -317,6 +318,17 @@ export function useFocusSession(): UseFocusSessionResult {
         };
 
         await saveFocusSession(updatedSession);
+        
+        // Log to analytics (only if session has valid end time and duration)
+        if (updatedSession.end_time && updatedSession.duration_minutes && updatedSession.duration_minutes > 0) {
+          try {
+            await logFocusSession(updatedSession);
+            console.log('[useFocusSession] Session logged to analytics');
+          } catch (analyticsError) {
+            console.error('[useFocusSession] Error logging session to analytics:', analyticsError);
+            // Don't fail session stop if analytics logging fails
+          }
+        }
       }
 
       // CRITICAL: Fully reset timer state to prevent sticky-state bugs

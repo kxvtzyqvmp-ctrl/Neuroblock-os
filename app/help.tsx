@@ -70,7 +70,7 @@ export default function HelpScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    Linking.openURL('https://doc-hosting.flycricket.io/neuroblock-os-privacy-policy/5877a8d1-2159-4f77-b15f-2d55dd9327b9/privacy');
+    Linking.openURL('https://www.neuroblockos.live/privacy-policy');
   };
 
   const toggleFAQ = (index: number) => {

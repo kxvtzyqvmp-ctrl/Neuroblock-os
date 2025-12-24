@@ -1,18 +1,20 @@
 /**
  * Paywall Screen
  * 
- * Displayed when the free trial expires. Users must subscribe
- * to continue using the app.
+ * Premium subscription screen. Users can subscribe to unlock:
+ * - Unlimited app + website blocking
+ * - Recurring schedules
+ * - Full tracker access
  * 
- * Flow: Paywall → (Subscription) → Dashboard
+ * Flow: Paywall → (Subscription) → Home (with full access)
  */
 
 import { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Crown, Check, Sparkles, Shield, Zap } from 'lucide-react-native';
+import { Crown, Check, Sparkles, Shield, Zap, BarChart3 } from 'lucide-react-native';
 import { useAppState } from '@/contexts/AppStateContext';
-import { useProStatus } from '@/hooks/useProStatus';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useRevenueCat } from '@/hooks/useRevenueCat';
 import RevenueCatPackageCard from '@/components/subscription/RevenueCatPackageCard';
 import AuroraBackground from '@/components/shared/AuroraBackground';
@@ -30,6 +32,11 @@ const FEATURES = [
     description: 'Create custom schedules for automatic blocking',
   },
   {
+    icon: BarChart3,
+    title: 'Full Tracker',
+    description: 'Track screen time, blocks, and progress',
+  },
+  {
     icon: Sparkles,
     title: 'AI Insights',
     description: 'Get personalized insights and recommendations',
@@ -39,69 +46,143 @@ const FEATURES = [
 export default function PaywallScreen() {
   const router = useRouter();
   const { setHasSubscription } = useAppState();
-  const { hasPro, isLoading: proLoading, refresh: refreshProStatus } = useProStatus();
-  const { packages, isLoading: packagesLoading, error: packagesError, purchasePackage, restorePurchases } = useRevenueCat();
-  const [selectedPackage, setSelectedPackage] = useState<any>(null);
-  const [isSubscribing, setIsSubscribing] = useState(false);
+  const { isPro, isLoading: subscriptionLoading, handlePurchase, handleRestore, refreshCustomerInfo } = useSubscription();
+  const { packages, rawPackages, isLoading: packagesLoading, error: packagesError, getPackageForPurchase } = useRevenueCat();
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // If user already has subscription, redirect to home
+  // If user already has subscription, redirect to home immediately
   useEffect(() => {
-    if (hasPro) {
+    if (isPro && !subscriptionLoading) {
       setHasSubscription(true);
       router.replace('/home');
     }
-  }, [hasPro, setHasSubscription, router]);
+  }, [isPro, subscriptionLoading, setHasSubscription, router]);
 
   const handleSubscribe = async (pkg?: any) => {
-    if (!pkg && packages.length > 0) {
-      // Default to first package if none selected
-      pkg = packages[0];
+    // Get the raw package for purchase
+    let packageToPurchase = pkg;
+    
+    if (!packageToPurchase && rawPackages.length > 0) {
+      // Default to first raw package if none selected
+      packageToPurchase = rawPackages[0];
+    } else if (pkg && typeof pkg.identifier === 'string') {
+      // If we have a simplified package, get the raw one
+      packageToPurchase = getPackageForPurchase(pkg.identifier);
     }
 
-    if (!pkg) {
+    if (!packageToPurchase) {
       Alert.alert('Error', 'No subscription package available. Please try again later.');
       return;
     }
 
-    setIsSubscribing(true);
+    setIsProcessing(true);
     
     try {
-      const success = await purchasePackage(pkg);
+      const result = await handlePurchase(packageToPurchase);
       
-      if (success) {
-        await refreshProStatus();
-        await setHasSubscription(true);
-        router.replace('/home');
-      } else {
-        setIsSubscribing(false);
+      if (result.success) {
+        // Purchase successful - refresh Pro status to ensure it's up to date
+        await refreshCustomerInfo();
+        
+        // Verify isPro is now true
+        if (isPro) {
+          // Pro status confirmed - redirect to home
+          await setHasSubscription(true);
+          router.replace('/home');
+        } else {
+          // This shouldn't happen, but handle gracefully
+          Alert.alert(
+            'Purchase Successful',
+            'Your purchase was successful. Please wait a moment for your subscription to activate.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  // Try refreshing again
+                  await refreshCustomerInfo();
+                  if (isPro) {
+                    await setHasSubscription(true);
+                    router.replace('/home');
+                  }
+                }
+              }
+            ]
+          );
+        }
+      } else if (result.error) {
+        // Only show error if there was an actual error (not user cancel)
+        Alert.alert('Purchase Issue', result.error);
       }
+      // If success is false but no error, user cancelled - do nothing
     } catch (error) {
-      console.error('[Paywall] Error subscribing:', error);
-      Alert.alert('Error', 'Failed to process subscription. Please try again.');
-      setIsSubscribing(false);
+      console.error('[Paywall] Unexpected error:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleRestore = async () => {
-    setIsSubscribing(true);
+  const handleRestorePurchases = async () => {
+    setIsProcessing(true);
     
     try {
-      const success = await restorePurchases();
+      const result = await handleRestore();
       
-      if (success) {
-        await refreshProStatus();
-        await setHasSubscription(true);
-        router.replace('/home');
+      if (result.success && result.restored) {
+        // Successfully restored - refresh Pro status to ensure it's up to date
+        await refreshCustomerInfo();
+        
+        // Verify isPro is now true
+        if (isPro) {
+          Alert.alert(
+            'Success!',
+            'Your premium subscription has been restored.',
+            [{
+              text: 'Continue',
+              onPress: async () => {
+                await setHasSubscription(true);
+                router.replace('/home');
+              }
+            }]
+          );
+        } else {
+          // This shouldn't happen, but handle gracefully
+          Alert.alert(
+            'Restore Successful',
+            'Your purchases were restored. Please wait a moment for your subscription to activate.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  // Try refreshing again
+                  await refreshCustomerInfo();
+                  if (isPro) {
+                    await setHasSubscription(true);
+                    router.replace('/home');
+                  }
+                }
+              }
+            ]
+          );
+        }
+      } else if (result.success && !result.restored) {
+        // Restore completed but no active purchases found
+        Alert.alert(
+          'No Purchases Found',
+          'We could not find any active purchases to restore. If you believe this is an error, please contact support.'
+        );
+      } else if (result.error) {
+        Alert.alert('Restore Failed', result.error);
       }
     } catch (error) {
-      console.error('[Paywall] Error restoring:', error);
+      console.error('[Paywall] Restore error:', error);
       Alert.alert('Error', 'Failed to restore purchases. Please try again.');
     } finally {
-      setIsSubscribing(false);
+      setIsProcessing(false);
     }
   };
 
-  const loading = proLoading || packagesLoading;
+  const loading = subscriptionLoading || packagesLoading;
 
   if (loading) {
     return (
@@ -109,6 +190,7 @@ export default function PaywallScreen() {
         <AuroraBackground />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#7C9DD9" />
+          <Text style={styles.loadingText}>Loading subscription options...</Text>
         </View>
       </View>
     );
@@ -127,7 +209,7 @@ export default function PaywallScreen() {
           <Crown size={64} color="#F4A261" strokeWidth={1.5} />
           <Text style={styles.title}>Unlock Premium</Text>
           <Text style={styles.subtitle}>
-            Unlock unlimited blocking, recurring schedules, and AI insights.
+            Take full control of your digital habits with premium features.
           </Text>
         </View>
 
@@ -144,7 +226,7 @@ export default function PaywallScreen() {
                   <Text style={styles.featureTitle}>{feature.title}</Text>
                   <Text style={styles.featureDescription}>{feature.description}</Text>
                 </View>
-                <Check size={20} color="#7C9DD9" />
+                <Check size={20} color="#5AE38C" />
               </View>
             );
           })}
@@ -154,7 +236,7 @@ export default function PaywallScreen() {
         {packagesError && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>
-              Failed to load subscription options. {packagesError}
+              Unable to load subscription options. Please check your connection and try again.
             </Text>
           </View>
         )}
@@ -162,14 +244,14 @@ export default function PaywallScreen() {
         {packages.length === 0 && !packagesLoading && !packagesError && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>
-              No subscription packages available. Please check your RevenueCat configuration.
+              No subscription packages available at the moment. Please try again later.
             </Text>
           </View>
         )}
 
         {packages.length > 0 && (
           <View style={styles.packagesContainer}>
-            {packages.map((pkg) => {
+            {packages.map((pkg, index) => {
               const isPopular = pkg.product.identifier.toLowerCase().includes('annual') ||
                                pkg.product.identifier.toLowerCase().includes('yearly');
               
@@ -179,21 +261,25 @@ export default function PaywallScreen() {
                   package={pkg}
                   isPopular={isPopular}
                   isCurrentPlan={false}
-                  onSelect={() => handleSubscribe(pkg)}
+                  onSelect={() => handleSubscribe(rawPackages[index])}
+                  disabled={isProcessing}
                 />
               );
             })}
           </View>
         )}
+
+        {/* Spacer for bottom actions */}
+        <View style={{ height: 180 }} />
       </ScrollView>
 
       {/* Bottom actions */}
       <View style={styles.bottomContainer}>
         {packages.length > 0 && (
           <TouchableOpacity
-            style={styles.subscribeButton}
+            style={[styles.subscribeButton, isProcessing && styles.buttonDisabled]}
             onPress={() => handleSubscribe()}
-            disabled={isSubscribing}
+            disabled={isProcessing}
           >
             <LinearGradient
               colors={['#7C9DD9', '#9B8AFB']}
@@ -201,8 +287,8 @@ export default function PaywallScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.gradientButton}
             >
-              {isSubscribing ? (
-                <ActivityIndicator color="#E8EDF4" />
+              {isProcessing ? (
+                <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.subscribeText}>Subscribe Now</Text>
               )}
@@ -211,11 +297,19 @@ export default function PaywallScreen() {
         )}
 
         <TouchableOpacity
-          style={styles.restoreButton}
-          onPress={handleRestore}
-          disabled={isSubscribing}
+          style={[styles.restoreButton, isProcessing && styles.buttonDisabled]}
+          onPress={handleRestorePurchases}
+          disabled={isProcessing}
         >
           <Text style={styles.restoreText}>Restore Purchases</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.skipButton}
+          onPress={() => router.back()}
+          disabled={isProcessing}
+        >
+          <Text style={styles.skipText}>Maybe Later</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -231,17 +325,21 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingTop: 60,
     paddingHorizontal: 24,
-    paddingBottom: 200,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: '#9BA8BA',
   },
   header: {
     alignItems: 'center',
     gap: 16,
-    marginBottom: 48,
+    marginBottom: 40,
   },
   title: {
     fontSize: 32,
@@ -258,14 +356,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   featuresContainer: {
-    gap: 20,
-    marginBottom: 40,
+    gap: 16,
+    marginBottom: 32,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    padding: 20,
+    padding: 16,
     backgroundColor: '#151515',
     borderRadius: 16,
     borderWidth: 1,
@@ -292,63 +390,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9BA8BA',
   },
-  pricingContainer: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  priceAmount: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: '#E8EDF4',
-  },
-  pricePeriod: {
-    fontSize: 20,
-    color: '#9BA8BA',
-  },
-  priceNote: {
-    fontSize: 14,
-    color: '#6B7A8F',
-  },
-  bottomContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 24,
-    paddingBottom: 40,
-    gap: 12,
-  },
-  subscribeButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  gradientButton: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subscribeText: {
-    color: '#E8EDF4',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  restoreButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  restoreText: {
-    color: '#9BA8BA',
-    fontSize: 16,
-    fontWeight: '500',
-  },
   packagesContainer: {
-    gap: 20,
-    marginBottom: 40,
+    gap: 16,
+    marginBottom: 24,
   },
   errorContainer: {
     backgroundColor: '#2A1F1F',
@@ -364,5 +408,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  bottomContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 12,
+    backgroundColor: '#0B0B0B',
+  },
+  subscribeButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  gradientButton: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscribeText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  restoreButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  restoreText: {
+    color: '#7C9DD9',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  skipButton: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  skipText: {
+    color: '#6B7A8F',
+    fontSize: 14,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
 });
-

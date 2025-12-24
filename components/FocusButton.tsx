@@ -8,6 +8,7 @@
  * - Haptic feedback
  * - Countdown display
  * - Smooth transitions
+ * - Manage Apps and Sites buttons
  */
 
 import React, { useEffect, useCallback, useMemo } from 'react';
@@ -21,7 +22,7 @@ import {
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Shield } from 'lucide-react-native';
+import { Shield, Globe } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFocusSession } from '@/hooks/useFocusSession';
@@ -30,9 +31,10 @@ import { useFocusDuration } from '@/hooks/useFocusDuration';
 
 interface FocusButtonProps {
   onManageApps?: () => void;
+  onManageSites?: () => void;
 }
 
-export default function FocusButton({ onManageApps }: FocusButtonProps) {
+export default function FocusButton({ onManageApps, onManageSites }: FocusButtonProps) {
   const { colors } = useTheme();
   const { isActive, remainingTime, totalDuration, startSession, stopSession, isLoading } = useFocusSession();
   // Get selected duration from UI - this is the single source of truth for what user selected
@@ -227,17 +229,33 @@ export default function FocusButton({ onManageApps }: FocusButtonProps) {
         </View>
       )}
 
-      {/* Manage Blocked Apps Button */}
+      {/* Manage Buttons - Only show when not active */}
       {!isActive && (
-        <TouchableOpacity
-          style={styles.manageButton}
-          onPress={onManageApps}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.manageButtonText, { color: colors.textSecondary }]}>
-            Manage Blocked Apps
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.manageButtonsContainer}>
+          {/* Manage Blocked Apps - First (above) */}
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={onManageApps}
+            activeOpacity={0.7}
+          >
+            <Shield color={colors.textSecondary} size={16} strokeWidth={2} />
+            <Text style={[styles.manageButtonText, { color: colors.textSecondary }]}>
+              Manage Blocked Apps
+            </Text>
+          </TouchableOpacity>
+
+          {/* Manage Sites - Second (below) */}
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={onManageSites}
+            activeOpacity={0.7}
+          >
+            <Globe color={colors.textSecondary} size={16} strokeWidth={2} />
+            <Text style={[styles.manageButtonText, { color: colors.textSecondary }]}>
+              Manage Sites
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -325,16 +343,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
+  manageButtonsContainer: {
+    marginTop: 36, // Minimum 32-40pt gap from circle to buttons
+    gap: 12,
+    alignItems: 'center',
+  },
   manageButton: {
-    marginTop: 40,
-    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
     paddingVertical: 12,
+    backgroundColor: 'rgba(142, 137, 251, 0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(142, 137, 251, 0.15)',
   },
   manageButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 });
-

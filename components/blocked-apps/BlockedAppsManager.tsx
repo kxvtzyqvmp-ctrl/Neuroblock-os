@@ -1,3 +1,13 @@
+/**
+ * BlockedAppsManager
+ * 
+ * Manages app blocking selection with premium gating:
+ * - Free users: Limited to 3 blocked apps
+ * - Pro users: Unlimited app blocking
+ * 
+ * Shows remaining blocks for free users and upgrade CTA when limit reached.
+ */
+
 import { useState, useEffect } from 'react';
 import {
   View,
@@ -8,9 +18,10 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { Search, ChevronDown, ChevronRight, Check } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
+import { Search, ChevronDown, ChevronRight, Check, Crown, Lock } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { usePaywall } from '@/hooks/usePaywall';
 import PaywallModal from '@/components/subscription/PaywallModal';
 import {
@@ -21,16 +32,27 @@ import {
   AppCategory,
 } from '@/lib/installedApps';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BLOCKED_APPS_KEY = '@neuroblock:blocked_apps';
 
 export default function BlockedAppsManager() {
-  const { canBlockApp, showPaywall, paywallConfig, closePaywall } = usePaywall();
+  const router = useRouter();
+  const { 
+    isPro, 
+    canBlockApp, 
+    getRemainingFreeBlocks, 
+    showPaywall, 
+    paywallConfig, 
+    closePaywall 
+  } = usePaywall();
+  
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [categories, setCategories] = useState<AppCategory[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
-  const [userId, setUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -51,18 +73,21 @@ export default function BlockedAppsManager() {
 
   const initializeData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserId(user.id);
-        await loadExistingBlocks(user.id);
+      // Load previously blocked apps from local storage
+      const storedApps = await AsyncStorage.getItem(BLOCKED_APPS_KEY);
+      if (storedApps) {
+        const parsed = JSON.parse(storedApps);
+        setSelectedApps(new Set(parsed));
       }
 
+      // Get installed apps
       const apps = await getInstalledApps();
       setInstalledApps(apps);
 
       const grouped = groupAppsByCategory(apps);
       setCategories(grouped);
 
+      // Expand first category by default
       if (grouped.length > 0) {
         setExpandedCategories(new Set([grouped[0].id]));
       }
@@ -70,32 +95,6 @@ export default function BlockedAppsManager() {
       console.error('[BlockedApps] Failed to initialize:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadExistingBlocks = async (uid: string) => {
-    try {
-      const { data: groups } = await supabase
-        .from('blocked_app_groups')
-        .select('id')
-        .eq('user_id', uid)
-        .eq('is_active', true);
-
-      if (groups && groups.length > 0) {
-        const groupIds = groups.map(g => g.id);
-
-        const { data: blockedApps } = await supabase
-          .from('blocked_apps')
-          .select('app_name, is_blocked')
-          .in('group_id', groupIds)
-          .eq('is_blocked', true);
-
-        if (blockedApps) {
-          setSelectedApps(new Set(blockedApps.map(app => app.app_name)));
-        }
-      }
-    } catch (error) {
-      console.error('[BlockedApps] Failed to load existing blocks:', error);
     }
   };
 
@@ -122,20 +121,25 @@ export default function BlockedAppsManager() {
 
     setSelectedApps(prev => {
       const newSet = new Set(prev);
+      
       if (newSet.has(appName)) {
+        // Always allow removing apps
         newSet.delete(appName);
       } else {
-        if (!canBlockApp(newSet.size + 1)) {
+        // Check if user can add more apps
+        if (!canBlockApp(newSet.size)) {
+          // Paywall will be shown by canBlockApp
           return prev;
         }
         newSet.add(appName);
       }
+      
       return newSet;
     });
   };
 
   const handleSave = async () => {
-    if (!userId || saving || selectedApps.size === 0) return;
+    if (saving || selectedApps.size === 0) return;
 
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -144,63 +148,23 @@ export default function BlockedAppsManager() {
     setSaving(true);
 
     try {
-      const { data: existingGroups } = await supabase
-        .from('blocked_app_groups')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('is_active', true);
-
-      let groupId: string;
-
-      if (existingGroups && existingGroups.length > 0) {
-        groupId = existingGroups[0].id;
-
-        await supabase
-          .from('blocked_apps')
-          .delete()
-          .eq('group_id', groupId);
-      } else {
-        const { data: newGroup, error: groupError } = await supabase
-          .from('blocked_app_groups')
-          .insert([
-            {
-              user_id: userId,
-              name: 'My Blocked Apps',
-              is_active: true,
-            },
-          ])
-          .select()
-          .single();
-
-        if (groupError) throw groupError;
-        groupId = newGroup.id;
-      }
-
-      const appsToInsert = Array.from(selectedApps).map(appName => {
-        const app = installedApps.find(a => a.appName === appName);
-        return {
-          group_id: groupId,
-          app_name: appName,
-          category: app?.category || 'other',
-          is_blocked: true,
-        };
-      });
-
-      if (appsToInsert.length > 0) {
-        const { error: appsError } = await supabase
-          .from('blocked_apps')
-          .insert(appsToInsert);
-
-        if (appsError) throw appsError;
-      }
-
+      // Save to local storage
+      await AsyncStorage.setItem(BLOCKED_APPS_KEY, JSON.stringify(Array.from(selectedApps)));
       console.log(`[BlockedApps] Saved ${selectedApps.size} apps successfully`);
+      
+      Alert.alert(
+        'Apps Saved',
+        `${selectedApps.size} app${selectedApps.size > 1 ? 's' : ''} will be blocked during focus sessions.`
+      );
     } catch (error) {
       console.error('[BlockedApps] Failed to save:', error);
+      Alert.alert('Error', 'Failed to save blocked apps. Please try again.');
     } finally {
       setSaving(false);
     }
   };
+
+  const remainingBlocks = getRemainingFreeBlocks(selectedApps.size);
 
   const renderCategory = (category: AppCategory) => {
     const isExpanded = expandedCategories.has(category.id);
@@ -274,6 +238,35 @@ export default function BlockedAppsManager() {
         <Text style={styles.subtitle}>
           Select apps to block during your focus sessions
         </Text>
+        
+        {/* Pro/Free status indicator */}
+        {!isPro && (
+          <View style={styles.limitBanner}>
+            <View style={styles.limitInfo}>
+              <Lock color="#FECF5E" size={16} strokeWidth={2} />
+              <Text style={styles.limitText}>
+                {remainingBlocks > 0 
+                  ? `${remainingBlocks} free block${remainingBlocks > 1 ? 's' : ''} remaining`
+                  : 'Free limit reached'
+                }
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.upgradeLink}
+              onPress={() => router.push('/paywall')}
+            >
+              <Crown color="#FECF5E" size={14} strokeWidth={2} />
+              <Text style={styles.upgradeLinkText}>Upgrade</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {isPro && (
+          <View style={styles.proBanner}>
+            <Crown color="#5AE38C" size={16} strokeWidth={2} />
+            <Text style={styles.proText}>Premium • Unlimited blocking</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.searchContainer}>
@@ -317,7 +310,7 @@ export default function BlockedAppsManager() {
               <ActivityIndicator size="small" color="#0A0E14" />
             ) : (
               <Text style={styles.saveButtonText}>
-                Save ({selectedApps.size})
+                Save ({selectedApps.size}{isPro ? '' : `/${3}`})
               </Text>
             )}
           </TouchableOpacity>
@@ -352,7 +345,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingTop: 60,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 32,
@@ -364,6 +357,56 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#9BA8BA',
     lineHeight: 22,
+    marginBottom: 16,
+  },
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(254, 207, 94, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(254, 207, 94, 0.2)',
+  },
+  limitInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  limitText: {
+    fontSize: 13,
+    color: '#FECF5E',
+    fontWeight: '500',
+  },
+  upgradeLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(254, 207, 94, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  upgradeLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FECF5E',
+  },
+  proBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(90, 227, 140, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(90, 227, 140, 0.2)',
+  },
+  proText: {
+    fontSize: 13,
+    color: '#5AE38C',
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',

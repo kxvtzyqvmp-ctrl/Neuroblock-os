@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AppStateProvider } from '@/contexts/AppStateContext';
+import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { initializeRevenueCat } from '@/lib/revenuecatInit';
 
 function RootNavigator() {
@@ -18,6 +19,7 @@ function RootNavigator() {
         <Stack.Screen name="paywall" />
         <Stack.Screen name="home" />
         <Stack.Screen name="schedules" />
+        <Stack.Screen name="tracker" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="help" />
         <Stack.Screen name="appearance" />
@@ -59,7 +61,9 @@ export default function RootLayout() {
     <AppInitializer>
       <ThemeProvider>
         <AppStateProvider>
-          <RootNavigator />
+          <SubscriptionProvider>
+            <RootNavigator />
+          </SubscriptionProvider>
         </AppStateProvider>
       </ThemeProvider>
     </AppInitializer>

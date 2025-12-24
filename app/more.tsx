@@ -242,7 +242,7 @@ export default function MoreScreen() {
           </View>
 
           <View style={styles.footerLinks}>
-            <TouchableOpacity onPress={() => Linking.openURL('https://neuroblockos.com/privacy')}>
+            <TouchableOpacity onPress={() => Linking.openURL('https://www.neuroblockos.live/privacy-policy')}>
               <Text style={styles.footerLink}>Privacy Policy</Text>
             </TouchableOpacity>
             <Text style={styles.footerDivider}>•</Text>

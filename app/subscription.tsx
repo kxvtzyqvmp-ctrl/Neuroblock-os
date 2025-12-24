@@ -5,13 +5,16 @@ import { Lock, X, CheckCircle, RefreshCw } from 'lucide-react-native';
 import { SUBSCRIPTION_PLANS } from '@/types/subscription';
 import PlanCard from '@/components/subscription/PlanCard';
 import RevenueCatPackageCard from '@/components/subscription/RevenueCatPackageCard';
+import SubscriptionStatusBanner from '@/components/subscription/SubscriptionStatusBanner';
 import { useProStatus } from '@/hooks/useProStatus';
 import { useRevenueCat } from '@/hooks/useRevenueCat';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 export default function SubscriptionScreen() {
   const router = useRouter();
   const { hasPro, isLoading: proLoading, refresh: refreshProStatus } = useProStatus();
-  const { packages, isLoading: packagesLoading, error: packagesError, purchasePackage, restorePurchases } = useRevenueCat();
+  const { packages, isLoading: packagesLoading, error: packagesError } = useRevenueCat();
+  const { handlePurchase, handleRestore } = useSubscription();
   const [selectedPackage, setSelectedPackage] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -30,17 +33,20 @@ export default function SubscriptionScreen() {
 
     setProcessing(true);
     try {
-      const success = await purchasePackage(selectedPackage);
+      const result = await handlePurchase(selectedPackage);
       
-      if (success) {
-        // Refresh pro status after purchase
+      if (result.success) {
+        // Refresh pro status after purchase (already done in handlePurchase, but ensures UI sync)
         await refreshProStatus();
         setProcessing(false);
         setShowConfirmModal(false);
         setShowSuccessModal(true);
       } else {
         setProcessing(false);
-        // Error alert is handled in purchasePackage
+        // Show error if one was returned (user cancellation returns no error)
+        if (result.error) {
+          Alert.alert('Purchase Failed', result.error);
+        }
       }
     } catch (error) {
       console.error('[SubscriptionScreen] Error processing purchase:', error);
@@ -52,13 +58,20 @@ export default function SubscriptionScreen() {
   const handleRestorePurchases = async () => {
     setRestoring(true);
     try {
-      const success = await restorePurchases();
+      const result = await handleRestore();
       
-      if (success) {
+      if (result.success) {
         // Refresh pro status after restore
         await refreshProStatus();
+        
+        if (result.restored) {
+          Alert.alert('Success', 'Your purchases have been restored!');
+        } else {
+          Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
+        }
+      } else if (result.error) {
+        Alert.alert('Restore Failed', result.error);
       }
-      // Alert is handled in restorePurchases
     } catch (error) {
       console.error('[SubscriptionScreen] Error restoring purchases:', error);
       Alert.alert('Error', 'Failed to restore purchases. Please try again.');
@@ -88,6 +101,9 @@ export default function SubscriptionScreen() {
         <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
           <X color="#9BA8BA" size={24} strokeWidth={2} />
         </TouchableOpacity>
+
+        {/* Subscription Status Banner */}
+        <SubscriptionStatusBanner />
 
         <View style={styles.header}>
           <View style={styles.iconContainer}>

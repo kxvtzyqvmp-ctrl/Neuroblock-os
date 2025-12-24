@@ -1,36 +1,39 @@
 /**
- * Home Screen - Perfect Centering & Zero-Friction
+ * Home Screen - Focus Hub
  * 
- * Perfectly centered focus button with:
- * - Vertical and horizontal centering on all devices
- * - Instant tap interaction
- * - Inline app selection
- * - Premium animations
+ * Main home screen with:
+ * - Weekly calendar strip at the top
+ * - Perfectly centered focus button (between calendar and bottom content)
+ * - Manage Blocked Apps button (above)
+ * - Manage Sites button (below)
+ * - Focus duration selector
+ * - No scrolling - fixed layout
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ScrollView,
   Platform,
   Animated,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AuroraBackground from '@/components/shared/AuroraBackground';
 import BottomTabNav from '@/components/BottomTabNav';
+import WeeklyCalendarStrip from '@/components/WeeklyCalendarStrip';
 import FocusButton from '@/components/FocusButton';
 import FocusDurationSelector from '@/components/FocusDurationSelector';
 import ManageAppsModal from '@/components/ManageAppsModal';
+import ManageSitesModal from '@/components/ManageSitesModal';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFocusSession } from '@/hooks/useFocusSession';
 
 export default function HomeScreen() {
-  const router = useRouter();
   const { colors, themeMode } = useTheme();
   const { isActive } = useFocusSession();
   const [showManageAppsModal, setShowManageAppsModal] = useState(false);
+  const [showManageSitesModal, setShowManageSitesModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -41,39 +44,61 @@ export default function HomeScreen() {
     }).start();
   }, []);
 
+  // Handler for calendar day selection
+  const handleDaySelect = (date: Date) => {
+    setSelectedDate(date);
+    console.log('[Home] Selected date:', date.toISOString().split('T')[0]);
+  };
+
+  // Handler for Manage Blocked Apps
+  const handleManageApps = () => {
+    setShowManageAppsModal(true);
+  };
+
+  // Handler for Manage Sites
+  const handleManageSites = () => {
+    setShowManageSitesModal(true);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
       <AuroraBackground />
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* Perfectly centered focus button */}
-          <View style={styles.centerContainer}>
-            <FocusButton
-              onManageApps={() => setShowManageAppsModal(true)}
-            />
-            
-            {/* Focus Duration Selector - Below Focus Button */}
-            <FocusDurationSelector disabled={isActive} />
-          </View>
-        </ScrollView>
+        {/* TOP SECTION: Calendar */}
+        <View style={styles.topSection}>
+          <WeeklyCalendarStrip onDaySelect={handleDaySelect} />
+        </View>
+
+        {/* MIDDLE SECTION: Focus Button - Centered between calendar and bottom */}
+        <View style={styles.middleSection}>
+          <FocusButton
+            onManageApps={handleManageApps}
+            onManageSites={handleManageSites}
+          />
+        </View>
+
+        {/* BOTTOM SECTION: Duration Selector */}
+        <View style={styles.bottomSection}>
+          <FocusDurationSelector disabled={isActive} />
+        </View>
       </Animated.View>
 
       <BottomTabNav />
 
-      {/* Inline Manage Apps Modal */}
+      {/* Manage Apps Modal */}
       <ManageAppsModal
         visible={showManageAppsModal}
         onClose={() => setShowManageAppsModal(false)}
-        onAppsUpdated={() => {
-          // Reload if needed
-        }}
+        onAppsUpdated={() => {}}
+      />
+
+      {/* Manage Sites Modal */}
+      <ManageSitesModal
+        visible={showManageSitesModal}
+        onClose={() => setShowManageSitesModal(false)}
+        onSitesUpdated={() => {}}
       />
     </View>
   );
@@ -85,25 +110,22 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: Platform.OS === 'ios' ? 90 : 70, // Space for bottom tab nav
   },
-  scrollView: {
+  topSection: {
+    // Calendar at top - no flex, just natural height
+  },
+  middleSection: {
     flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 100,
-    minHeight: '100%',
+    paddingTop: 48, // Minimum gap from calendar - circle must never overlap
+    paddingBottom: 16, // Ensure some breathing room at bottom
   },
-  centerContainer: {
-    flex: 1,
-    width: '100%',
-
-    justifyContent: 'center',
-    alignItems: 'center',
+  bottomSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
 });
-

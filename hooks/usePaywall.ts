@@ -1,5 +1,12 @@
+/**
+ * usePaywall Hook
+ * 
+ * Manages paywall display and feature access based on subscription status.
+ * Uses the central SubscriptionContext for pro status.
+ */
+
 import { useState, useCallback } from 'react';
-import { useProStatus } from './useProStatus';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { SUBSCRIPTION_PLANS } from '@/types/subscription';
 
 interface PaywallConfig {
@@ -9,34 +16,42 @@ interface PaywallConfig {
 }
 
 export function usePaywall() {
-  const { hasPro, isLoading } = useProStatus();
+  const { isPro, isLoading } = useSubscription();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallConfig, setPaywallConfig] = useState<PaywallConfig>({});
 
+  // Check if user has access to a feature
   const checkAccess = useCallback((config: PaywallConfig = {}): boolean => {
     const requiresPro = config.requiresPro ?? true;
 
+    // If feature doesn't require pro, allow access
     if (!requiresPro) {
       return true;
     }
 
+    // If still loading, temporarily deny (will be rechecked)
     if (isLoading) {
       return false;
     }
 
-    if (hasPro) {
+    // If user has pro, allow access
+    if (isPro) {
       return true;
     }
 
+    // Show paywall and deny access
     setPaywallConfig(config);
     setShowPaywall(true);
     return false;
-  }, [hasPro, isLoading]);
+  }, [isPro, isLoading]);
 
+  // Close paywall
   const closePaywall = useCallback(() => {
     setShowPaywall(false);
+    setPaywallConfig({});
   }, []);
 
+  // Feature-specific access checks
   const canAccessAI = useCallback((): boolean => {
     return checkAccess({
       feature: 'AI Coach & Insights',
@@ -61,34 +76,60 @@ export function usePaywall() {
     });
   }, [checkAccess]);
 
+  // Check if user can block additional apps
   const canBlockApp = useCallback((currentBlockedCount: number): boolean => {
-    const maxBlocks: number = SUBSCRIPTION_PLANS.FREE.limitations.maxAppBlocks;
+    const maxBlocks = SUBSCRIPTION_PLANS.FREE.limitations.maxAppBlocks;
 
-    if (hasPro || maxBlocks === -1) {
+    // Pro users have unlimited blocks
+    if (isPro) {
       return true;
     }
 
+    // Check if maxBlocks is -1 (unlimited) - convert to number for comparison
+    const maxBlocksNum = Number(maxBlocks);
+    if (maxBlocksNum === -1) {
+      return true;
+    }
+
+    // Check if within free tier limit
     if (currentBlockedCount < maxBlocks) {
       return true;
     }
 
+    // Show paywall for exceeding limit
     return checkAccess({
       feature: 'Unlimited App Blocks',
       message: `Free plan allows blocking up to ${maxBlocks} apps. Upgrade to Premium for unlimited app blocks.`,
       requiresPro: true,
     });
-  }, [hasPro, checkAccess]);
+  }, [isPro, checkAccess]);
+
+  // Check remaining free blocks
+  const getRemainingFreeBlocks = useCallback((currentBlockedCount: number): number => {
+    if (isPro) return -1; // Unlimited
+    const maxBlocks = SUBSCRIPTION_PLANS.FREE.limitations.maxAppBlocks;
+    return Math.max(0, maxBlocks - currentBlockedCount);
+  }, [isPro]);
 
   return {
-    hasPro,
+    // Pro status
+    isPro,
+    hasPro: isPro, // Alias for backwards compatibility
     isLoading,
+
+    // Paywall state
     showPaywall,
     paywallConfig,
+
+    // Actions
     checkAccess,
     closePaywall,
+
+    // Feature checks
     canAccessAI,
     canAccessFamily,
     canAccessCustomSchedules,
     canBlockApp,
+    getRemainingFreeBlocks,
   };
 }

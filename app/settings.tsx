@@ -5,11 +5,11 @@
  * - Appearance
  * - Notifications
  * - Help & Support
- * - Account / Reset App
+ * - Subscription / Account
  * - About / What's New
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import {
   Alert,
   Linking,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -34,17 +35,20 @@ import {
   Shield,
   Crown,
   ExternalLink,
+  RotateCcw,
+  Check,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AuroraBackground from '@/components/shared/AuroraBackground';
 import BottomTabNav from '@/components/BottomTabNav';
 import { useAppState } from '@/contexts/AppStateContext';
-import { useProStatus } from '@/hooks/useProStatus';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { resetApp } = useAppState();
-  const { hasPro } = useProStatus();
+  const { isPro, handleRestore, refreshCustomerInfo } = useSubscription();
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const handleResetApp = () => {
     Alert.alert(
@@ -85,6 +89,37 @@ export default function SettingsScreen() {
     Linking.openURL(reviewUrl);
   };
 
+  const handleRestorePurchases = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    setIsRestoring(true);
+    
+    try {
+      const result = await handleRestore();
+      
+      if (result.success && result.restored) {
+        Alert.alert(
+          'Success!',
+          'Your premium subscription has been restored.',
+        );
+      } else if (result.success && !result.restored) {
+        Alert.alert(
+          'No Purchases Found',
+          'We could not find any active purchases to restore.'
+        );
+      } else if (result.error) {
+        Alert.alert('Restore Failed', result.error);
+      }
+    } catch (error) {
+      console.error('[Settings] Restore error:', error);
+      Alert.alert('Error', 'Failed to restore purchases. Please try again.');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   const settingsSections = [
     {
       title: 'Appearance',
@@ -105,6 +140,45 @@ export default function SettingsScreen() {
           label: 'Notification Settings',
           color: '#4ED4C7',
           route: '/notifications',
+        },
+      ],
+    },
+    {
+      title: 'Subscription',
+      items: isPro ? [
+        {
+          icon: Crown,
+          label: 'Premium Active',
+          color: '#5AE38C',
+          badge: 'Active',
+          badgeColor: '#5AE38C',
+          action: () => {
+            Alert.alert(
+              'Premium Active',
+              'You have full access to all NeuroBlock OS features. Thank you for your support!'
+            );
+          },
+        },
+        {
+          icon: RotateCcw,
+          label: 'Restore Purchases',
+          color: '#7C9DD9',
+          action: handleRestorePurchases,
+          isLoading: isRestoring,
+        },
+      ] : [
+        {
+          icon: Crown,
+          label: 'Upgrade to Premium',
+          color: '#FECF5E',
+          action: () => router.push('/paywall'),
+        },
+        {
+          icon: RotateCcw,
+          label: 'Restore Purchases',
+          color: '#7C9DD9',
+          action: handleRestorePurchases,
+          isLoading: isRestoring,
         },
       ],
     },
@@ -135,13 +209,6 @@ export default function SettingsScreen() {
       title: 'Account',
       items: [
         {
-          icon: Crown,
-          label: hasPro ? 'Premium Active' : 'Upgrade to Premium',
-          color: hasPro ? '#FECF5E' : '#FECF5E',
-          route: hasPro ? undefined : '/paywall',
-          action: hasPro ? undefined : () => router.push('/paywall'),
-        },
-        {
           icon: RefreshCw,
           label: 'Reset App',
           color: '#F87171',
@@ -162,7 +229,7 @@ export default function SettingsScreen() {
           icon: Shield,
           label: 'Privacy Policy',
           color: '#8E89FB',
-          action: () => Linking.openURL('https://doc-hosting.flycricket.io/neuroblock-os-privacy-policy/5877a8d1-2159-4f77-b15f-2d55dd9327b9/privacy'),
+          action: () => Linking.openURL('https://www.neuroblockos.live/privacy-policy'),
           hasExternalIcon: true,
         },
       ],
@@ -190,11 +257,15 @@ export default function SettingsScreen() {
               {section.items.map((item, itemIndex) => {
                 const Icon = item.icon;
                 const hasExternalIcon = 'hasExternalIcon' in item && item.hasExternalIcon;
+                const hasBadge = 'badge' in item && item.badge;
+                const isLoading = 'isLoading' in item && item.isLoading;
+                
                 return (
                   <TouchableOpacity
                     key={itemIndex}
                     style={styles.item}
                     onPress={() => {
+                      if (isLoading) return;
                       if (Platform.OS !== 'web') {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       }
@@ -205,11 +276,24 @@ export default function SettingsScreen() {
                       }
                     }}
                     activeOpacity={0.7}
+                    disabled={isLoading}
                   >
                     <View style={[styles.itemIconContainer, { backgroundColor: `${item.color}20` }]}>
-                      <Icon color={item.color} size={20} strokeWidth={2} />
+                      {isLoading ? (
+                        <ActivityIndicator size="small" color={item.color} />
+                      ) : (
+                        <Icon color={item.color} size={20} strokeWidth={2} />
+                      )}
                     </View>
                     <Text style={styles.itemLabel}>{item.label}</Text>
+                    {hasBadge && (
+                      <View style={[styles.badge, { backgroundColor: `${(item as any).badgeColor}20` }]}>
+                        <Check color={(item as any).badgeColor} size={12} strokeWidth={3} />
+                        <Text style={[styles.badgeText, { color: (item as any).badgeColor }]}>
+                          {(item as any).badge}
+                        </Text>
+                      </View>
+                    )}
                     {hasExternalIcon && (
                       <ExternalLink
                         color="#6B7A8F"
@@ -298,6 +382,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   footer: {
     alignItems: 'center',
     paddingTop: 32,
@@ -314,4 +410,3 @@ const styles = StyleSheet.create({
     color: '#6B7A8F',
   },
 });
-

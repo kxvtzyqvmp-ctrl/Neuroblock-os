@@ -14,6 +14,7 @@ interface RevenueCatPackageCardProps {
   isPopular?: boolean;
   isCurrentPlan?: boolean;
   onSelect: () => void;
+  disabled?: boolean;
 }
 
 export default function RevenueCatPackageCard({
@@ -21,6 +22,7 @@ export default function RevenueCatPackageCard({
   isPopular = false,
   isCurrentPlan = false,
   onSelect,
+  disabled = false,
 }: RevenueCatPackageCardProps) {
   // Map package identifier to features
   const getFeatures = (identifier: string) => {
@@ -99,7 +101,7 @@ export default function RevenueCatPackageCard({
           isCurrentPlan && styles.buttonCurrent,
         ]}
         onPress={onSelect}
-        disabled={isCurrentPlan}
+        disabled={isCurrentPlan || disabled}
       >
         <Text
           style={[

@@ -3,10 +3,13 @@
  * 
  * Fetches and manages RevenueCat offerings, packages, and purchases.
  * Dynamically loads all available subscription packages from RevenueCat.
+ * 
+ * Note: Purchase/restore logic is now centralized in SubscriptionContext.
+ * This hook is primarily for fetching offerings and package data.
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import { getRevenueCatInstance, isRevenueCatInitialized } from '@/lib/revenuecatInit';
 
 export interface RevenueCatPackage {
@@ -40,16 +43,17 @@ export interface RevenueCatOfferings {
 interface UseRevenueCatReturn {
   offerings: RevenueCatOfferings | null;
   packages: RevenueCatPackage[];
+  rawPackages: any[]; // Original package objects for purchase
   isLoading: boolean;
   error: string | null;
   refreshOfferings: () => Promise<void>;
-  purchasePackage: (pkg: RevenueCatPackage) => Promise<boolean>;
-  restorePurchases: () => Promise<boolean>;
+  getPackageForPurchase: (identifier: string) => any | null;
 }
 
 export function useRevenueCat(): UseRevenueCatReturn {
   const [offerings, setOfferings] = useState<RevenueCatOfferings | null>(null);
   const [packages, setPackages] = useState<RevenueCatPackage[]>([]);
+  const [rawPackages, setRawPackages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +81,9 @@ export function useRevenueCat(): UseRevenueCatReturn {
 
       // Extract available packages from current offering
       if (offeringsData.current && offeringsData.current.availablePackages.length > 0) {
+        // Store raw packages for purchase operations
+        setRawPackages(offeringsData.current.availablePackages);
+
         const availablePackages = offeringsData.current.availablePackages.map((pkg: any) => ({
           identifier: pkg.identifier,
           packageType: pkg.packageType,
@@ -99,128 +106,22 @@ export function useRevenueCat(): UseRevenueCatReturn {
         setPackages(availablePackages);
       } else {
         setPackages([]);
+        setRawPackages([]);
       }
     } catch (err: any) {
       console.error('[useRevenueCat] Error fetching offerings:', err);
       setError(err.message || 'Failed to fetch offerings');
       setPackages([]);
+      setRawPackages([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const purchasePackage = useCallback(async (pkg: RevenueCatPackage): Promise<boolean> => {
-    if (Platform.OS === 'web' || !isRevenueCatInitialized()) {
-      Alert.alert('Not Available', 'Purchases are only available on iOS and Android.');
-      return false;
-    }
-
-    const Purchases = getRevenueCatInstance();
-    if (!Purchases) {
-      Alert.alert('Error', 'Purchase system is not ready. Please try again.');
-      return false;
-    }
-
-    try {
-      // Create package object from the identifier
-      // We need to get the actual package object from offerings
-      let packageToPurchase: any = null;
-      
-      if (offerings?.current) {
-        packageToPurchase = offerings.current.availablePackages.find(
-          (availablePkg: any) => availablePkg.identifier === pkg.identifier
-        );
-      }
-
-      if (!packageToPurchase) {
-        // Fallback: try to find by product identifier
-        if (offerings?.current) {
-          packageToPurchase = offerings.current.availablePackages.find(
-            (availablePkg: any) => availablePkg.product.identifier === pkg.product.identifier
-          );
-        }
-      }
-
-      if (!packageToPurchase) {
-        console.error('[useRevenueCat] Package not found:', pkg.identifier);
-        Alert.alert('Error', 'Selected package not found. Please try again.');
-        return false;
-      }
-
-      const purchaseInfo = await Purchases.purchasePackage(packageToPurchase);
-      const { customerInfo } = purchaseInfo;
-
-      // Check for pro_access entitlement (user requested this name)
-      const isPro = customerInfo.entitlements.active['pro_access'] !== undefined;
-      
-      if (isPro) {
-        Alert.alert('Success!', 'You\'ve unlocked NeuroBlock Pro.');
-        
-        // Refresh offerings after purchase
-        await fetchOfferings();
-        
-        return true;
-      } else {
-        Alert.alert('Warning', 'Purchase completed but access not granted. Please contact support.');
-        return false;
-      }
-    } catch (err: any) {
-      console.error('[useRevenueCat] Purchase error:', err);
-      
-      if (err.userCancelled) {
-        return false;
-      }
-
-      Alert.alert(
-        'Purchase Failed',
-        err.message || 'Unable to complete purchase. Please try again.'
-      );
-      return false;
-    }
-  }, [offerings, fetchOfferings]);
-
-  const restorePurchases = useCallback(async (): Promise<boolean> => {
-    if (Platform.OS === 'web' || !isRevenueCatInitialized()) {
-      Alert.alert('Not Available', 'Restore purchases is only available on iOS and Android.');
-      return false;
-    }
-
-    const Purchases = getRevenueCatInstance();
-    if (!Purchases) {
-      Alert.alert('Error', 'Purchase system is not ready. Please try again.');
-      return false;
-    }
-
-    try {
-      const customerInfo = await Purchases.restorePurchases();
-      
-      const isPro = customerInfo.entitlements.active['pro_access'] !== undefined;
-
-      // Refresh offerings after restore
-      await fetchOfferings();
-
-      if (isPro) {
-        Alert.alert(
-          'Success',
-          'Your premium subscription has been restored!'
-        );
-        return true;
-      } else {
-        Alert.alert(
-          'No Purchases Found',
-          'We could not find any purchases to restore.'
-        );
-        return false;
-      }
-    } catch (err: any) {
-      console.error('[useRevenueCat] Restore error:', err);
-      Alert.alert(
-        'Restore Failed',
-        'Unable to restore purchases. Please try again later.'
-      );
-      return false;
-    }
-  }, [fetchOfferings]);
+  // Get the raw package object for purchase by identifier
+  const getPackageForPurchase = useCallback((identifier: string): any | null => {
+    return rawPackages.find(pkg => pkg.identifier === identifier) || null;
+  }, [rawPackages]);
 
   useEffect(() => {
     fetchOfferings();
@@ -229,10 +130,10 @@ export function useRevenueCat(): UseRevenueCatReturn {
   return {
     offerings,
     packages,
+    rawPackages,
     isLoading,
     error,
     refreshOfferings: fetchOfferings,
-    purchasePackage,
-    restorePurchases,
+    getPackageForPurchase,
   };
 }
