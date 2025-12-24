@@ -13,9 +13,11 @@ import { Check, Sun, Moon, Smartphone, Zap, Wind, Gauge } from 'lucide-react-nat
 import { useTheme, ThemeMode, AccentColor, AnimationSpeed } from '@/contexts/ThemeContext';
 import BottomTabNav from '@/components/BottomTabNav';
 import AuroraBackground from '@/components/shared/AuroraBackground';
+import { useColorScheme } from 'react-native';
 
 export default function AppearanceScreen() {
   const { themeMode, accentColor, animationSpeed, colors, setThemeMode, setAccentColor, setAnimationSpeed } = useTheme();
+  const systemColorScheme = useColorScheme();
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const feedbackAnim = useRef(new Animated.Value(0)).current;
 
@@ -144,6 +146,11 @@ export default function AppearanceScreen() {
               );
             })}
           </View>
+          {themeMode === 'system' && (
+            <Text style={[styles.systemHelperText, { color: colors.textSecondary }]}>
+              Follows device appearance (currently {systemColorScheme === 'light' ? 'Light' : 'Dark'})
+            </Text>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -151,6 +158,10 @@ export default function AppearanceScreen() {
           <View style={styles.colorGrid}>
             {accents.map((accent) => {
               const isSelected = accentColor === accent.color;
+              // Determine checkmark color based on accent brightness
+              const isBrightColor = accent.color === 'amber' || accent.color === 'rose';
+              const checkmarkColor = isBrightColor ? '#000000' : '#FFFFFF';
+              
               return (
                 <TouchableOpacity
                   key={accent.color}
@@ -164,8 +175,8 @@ export default function AppearanceScreen() {
                 >
                   <View style={[styles.colorPreview, { backgroundColor: accent.hex }]}>
                     {isSelected && (
-                      <View style={styles.colorCheck}>
-                        <Check size={16} color="#FFFFFF" strokeWidth={3} />
+                      <View style={[styles.colorCheck, { backgroundColor: 'rgba(0, 0, 0, 0.2)' }]}>
+                        <Check size={16} color={checkmarkColor} strokeWidth={3} />
                       </View>
                     )}
                   </View>
@@ -373,5 +384,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  systemHelperText: {
+    fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });

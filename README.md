@@ -93,8 +93,8 @@ eas build --profile production --platform android
 The project is configured in `app.json` with:
 - Project ID: `06ce092c-e8c5-4055-a94a-2bcaeef77676`
 - Owner: `thlangu`
-- Bundle Identifier: `com.harmonicminds.neuroblockos`
-- Package Name: `com.harmonicminds.neuroblockos`
+- Bundle Identifier: `com.harmonicminds.dopaminedetox`
+- Package Name: `com.harmonicminds.dopaminedetox`
 
 ### EAS Configuration
 

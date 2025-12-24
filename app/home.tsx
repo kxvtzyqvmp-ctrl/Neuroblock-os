@@ -21,12 +21,15 @@ import { StatusBar } from 'expo-status-bar';
 import AuroraBackground from '@/components/shared/AuroraBackground';
 import BottomTabNav from '@/components/BottomTabNav';
 import FocusButton from '@/components/FocusButton';
+import FocusDurationSelector from '@/components/FocusDurationSelector';
 import ManageAppsModal from '@/components/ManageAppsModal';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useFocusSession } from '@/hooks/useFocusSession';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, themeMode } = useTheme();
+  const { isActive } = useFocusSession();
   const [showManageAppsModal, setShowManageAppsModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -55,6 +58,9 @@ export default function HomeScreen() {
             <FocusButton
               onManageApps={() => setShowManageAppsModal(true)}
             />
+            
+            {/* Focus Duration Selector - Below Focus Button */}
+            <FocusDurationSelector disabled={isActive} />
           </View>
         </ScrollView>
       </Animated.View>
@@ -95,7 +101,9 @@ const styles = StyleSheet.create({
   centerContainer: {
     flex: 1,
     width: '100%',
+
     justifyContent: 'center',
     alignItems: 'center',
   },
 });
+

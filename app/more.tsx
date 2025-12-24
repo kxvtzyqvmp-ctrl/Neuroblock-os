@@ -124,7 +124,7 @@ export default function MoreScreen() {
   const handleLeaveReview = () => {
     const reviewUrl = Platform.select({
       ios: 'https://apps.apple.com/app/id123456789', // Replace with actual App Store ID
-      android: 'https://play.google.com/store/apps/details?id=com.harmonicminds.neuroblockos', // Replace with actual package name
+      android: 'https://play.google.com/store/apps/details?id=com.harmonicminds.dopaminedetox',
       default: 'https://neuroblockos.app/reviews',
     });
     Linking.openURL(reviewUrl);

@@ -19,6 +19,7 @@ function RootNavigator() {
         <Stack.Screen name="home" />
         <Stack.Screen name="schedules" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="help" />
         <Stack.Screen name="appearance" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="+not-found" />

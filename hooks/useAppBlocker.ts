@@ -41,6 +41,8 @@ export function useAppBlocker(): UseAppBlockerResult {
     }
   }, []);
 
+  const stopMonitoringRef = useRef<(() => void) | null>(null);
+
   const startMonitoring = useCallback(async (
     onBlocked: (appName: string, packageName: string) => void
   ) => {
@@ -74,13 +76,14 @@ export function useAppBlocker(): UseAppBlockerResult {
       } catch (error) {
         console.error('[useAppBlocker] Error starting monitoring:', error);
         setIsBlocking(false);
+        return;
       }
 
     // Set up periodic checks for active session status
     intervalRef.current = setInterval(async () => {
       const stillActive = await checkActiveSession();
-      if (!stillActive) {
-        stopMonitoring();
+      if (!stillActive && stopMonitoringRef.current) {
+        stopMonitoringRef.current();
       }
     }, 5000); // Check every 5 seconds
 
@@ -104,6 +107,11 @@ export function useAppBlocker(): UseAppBlockerResult {
 
     console.log('[useAppBlocker] Monitoring stopped');
   }, [isBlocking]);
+
+  // Store stopMonitoring in ref for use in startMonitoring
+  useEffect(() => {
+    stopMonitoringRef.current = stopMonitoring;
+  }, [stopMonitoring]);
 
   // Cleanup on unmount
   useEffect(() => {

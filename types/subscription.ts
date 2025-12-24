@@ -11,7 +11,7 @@ export const SUBSCRIPTION_PLANS = {
       'Basic insights',
     ] as string[],
     limitations: {
-      maxAppBlocks: 7,
+      maxAppBlocks: 3,
       aiInsights: false,
       familyLinking: false,
       customSchedules: false,

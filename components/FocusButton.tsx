@@ -10,7 +10,7 @@
  * - Smooth transitions
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFocusSession } from '@/hooks/useFocusSession';
 import { useFocusAnimations } from '@/hooks/useFocusAnimations';
+import { useFocusDuration } from '@/hooks/useFocusDuration';
 
 interface FocusButtonProps {
   onManageApps?: () => void;
@@ -34,6 +35,17 @@ interface FocusButtonProps {
 export default function FocusButton({ onManageApps }: FocusButtonProps) {
   const { colors } = useTheme();
   const { isActive, remainingTime, totalDuration, startSession, stopSession, isLoading } = useFocusSession();
+  // Get selected duration from UI - this is the single source of truth for what user selected
+  const { duration: selectedDurationMinutes } = useFocusDuration();
+  
+  // Convert to seconds for timer
+  const selectedDurationSeconds = selectedDurationMinutes * 60;
+  
+  // Log current duration for debugging
+  useEffect(() => {
+    console.log('[FocusButton] Current selected duration:', selectedDurationMinutes, 'minutes (', selectedDurationSeconds, 'seconds)');
+  }, [selectedDurationMinutes, selectedDurationSeconds]);
+  
   const {
     pulseStyle,
     fillStyle,
@@ -69,13 +81,21 @@ export default function FocusButton({ onManageApps }: FocusButtonProps) {
     }
   }, [isActive, isLoading, startPulse, stopPulse]);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const formatTime = useCallback((totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, []);
 
-  const handlePress = async () => {
+  const formattedTime = useMemo(() => {
+    if (!isActive || remainingTime <= 0) return '';
+    return formatTime(remainingTime);
+  }, [isActive, remainingTime, formatTime]);
+
+  const handlePress = useCallback(async () => {
     if (isLoading) return;
 
     if (isActive) {
@@ -115,16 +135,23 @@ export default function FocusButton({ onManageApps }: FocusButtonProps) {
       
       // Small delay for natural rhythm
       setTimeout(async () => {
-        const success = await startSession(30); // Default 30 minutes
+        // CRITICAL: Pass durationSeconds as argument to startSession()
+        // Timer does NOT store duration internally - we pass the CURRENT selected duration
+        // This makes sticky-state bugs impossible - timer always uses the value we pass here
+        console.log('[FocusButton] Starting session with selected duration:', selectedDurationMinutes, 'minutes (', selectedDurationSeconds, 'seconds)');
+        const success = await startSession(selectedDurationSeconds); // Pass current selected duration as argument
         if (success) {
           if (Platform.OS !== 'web') {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
           triggerRelease();
+        } else {
+          // Reset animations on failure
+          triggerEnd();
         }
       }, 150);
     }
-  };
+  }, [isLoading, isActive, startSession, stopSession, triggerPress, triggerRelease, triggerEnd, selectedDurationSeconds, selectedDurationMinutes]);
 
   return (
     <View style={styles.container}>
@@ -189,10 +216,10 @@ export default function FocusButton({ onManageApps }: FocusButtonProps) {
       </TouchableOpacity>
 
       {/* Countdown Display */}
-      {isActive && remainingTime > 0 && (
+      {isActive && remainingTime > 0 && formattedTime && (
         <View style={styles.countdownContainer}>
           <Text style={[styles.countdownText, { color: colors.text }]}>
-            {formatTime(remainingTime)}
+            {formattedTime}
           </Text>
           <Text style={[styles.countdownLabel, { color: colors.textSecondary }]}>
             remaining

@@ -2,143 +2,66 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Modal, Pressable, TouchableOpacity, ActivityIndicator, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Lock, X, CheckCircle, RefreshCw } from 'lucide-react-native';
-import { supabase, UserSubscription } from '@/lib/supabase';
 import { SUBSCRIPTION_PLANS } from '@/types/subscription';
 import PlanCard from '@/components/subscription/PlanCard';
+import RevenueCatPackageCard from '@/components/subscription/RevenueCatPackageCard';
 import { useProStatus } from '@/hooks/useProStatus';
-import { getRevenueCatInstance } from '@/lib/revenuecatInit';
+import { useRevenueCat } from '@/hooks/useRevenueCat';
 
 export default function SubscriptionScreen() {
   const router = useRouter();
   const { hasPro, isLoading: proLoading, refresh: refreshProStatus } = useProStatus();
-  const [loading, setLoading] = useState(true);
-  const [currentSubscription, setCurrentSubscription] = useState<UserSubscription | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const { packages, isLoading: packagesLoading, error: packagesError, purchasePackage, restorePurchases } = useRevenueCat();
+  const [selectedPackage, setSelectedPackage] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
-  useEffect(() => {
-    loadSubscription();
-  }, []);
+  const loading = packagesLoading || proLoading;
 
-  const loadSubscription = async () => {
-    try {
-      const { data } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .maybeSingle();
-
-      setCurrentSubscription(data);
-    } catch (error) {
-      console.error('Error loading subscription:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectPlan = (planId: string) => {
-    if (planId === 'free') return;
-    setSelectedPlan(planId);
+  const handleSelectPackage = (pkg: any) => {
+    setSelectedPackage(pkg);
     setShowConfirmModal(true);
   };
 
   const handleConfirmPurchase = async () => {
-    if (!selectedPlan) return;
+    if (!selectedPackage) return;
 
     setProcessing(true);
-
-    if (Platform.OS === 'web') {
-      setTimeout(async () => {
-        try {
-          const plan = SUBSCRIPTION_PLANS[selectedPlan.toUpperCase() as keyof typeof SUBSCRIPTION_PLANS];
-
-          if (currentSubscription) {
-            await supabase
-              .from('user_subscriptions')
-              .update({ is_active: false })
-              .eq('id', currentSubscription.id);
-          }
-
-          const { data: newSubscription } = await supabase
-            .from('user_subscriptions')
-            .insert([
-              {
-                plan: 'premium',
-                billing_cycle: plan.billingCycle,
-                price_paid: plan.price,
-                is_active: true,
-                start_date: new Date().toISOString(),
-              },
-            ])
-            .select()
-            .single();
-
-          setCurrentSubscription(newSubscription);
-          setProcessing(false);
-          setShowConfirmModal(false);
-          setShowSuccessModal(true);
-        } catch (error) {
-          console.error('Error updating subscription:', error);
-          setProcessing(false);
-        }
-      }, 2000);
-    } else {
-      try {
+    try {
+      const success = await purchasePackage(selectedPackage);
+      
+      if (success) {
+        // Refresh pro status after purchase
         await refreshProStatus();
         setProcessing(false);
         setShowConfirmModal(false);
         setShowSuccessModal(true);
-      } catch (error) {
-        console.error('Error processing purchase:', error);
-        Alert.alert('Error', 'Failed to process purchase. Please try again.');
+      } else {
         setProcessing(false);
+        // Error alert is handled in purchasePackage
       }
+    } catch (error) {
+      console.error('[SubscriptionScreen] Error processing purchase:', error);
+      Alert.alert('Error', 'Failed to process purchase. Please try again.');
+      setProcessing(false);
     }
   };
 
   const handleRestorePurchases = async () => {
-    if (Platform.OS === 'web') {
-      Alert.alert('Not Available', 'Restore purchases is only available on iOS and Android.');
-      return;
-    }
-
-    const Purchases = getRevenueCatInstance();
-    if (!Purchases) {
-      Alert.alert('Error', 'Purchase system is not ready. Please try again.');
-      return;
-    }
-
     setRestoring(true);
     try {
-      const customerInfo = await Purchases.restorePurchases();
-      const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
-
-      await refreshProStatus();
-
-      if (isPro) {
-        Alert.alert(
-          'Success',
-          'Your premium subscription has been restored!',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          'No Purchases Found',
-          'We could not find any purchases to restore.',
-          [{ text: 'OK' }]
-        );
+      const success = await restorePurchases();
+      
+      if (success) {
+        // Refresh pro status after restore
+        await refreshProStatus();
       }
+      // Alert is handled in restorePurchases
     } catch (error) {
-      console.error('Error restoring purchases:', error);
-      Alert.alert(
-        'Restore Failed',
-        'Unable to restore purchases. Please try again later.',
-        [{ text: 'OK' }]
-      );
+      console.error('[SubscriptionScreen] Error restoring purchases:', error);
+      Alert.alert('Error', 'Failed to restore purchases. Please try again.');
     } finally {
       setRestoring(false);
     }
@@ -157,7 +80,7 @@ export default function SubscriptionScreen() {
     );
   }
 
-  const isPremium = hasPro || (currentSubscription?.plan === 'premium' && currentSubscription?.is_active);
+  const isPremium = hasPro;
 
   return (
     <View style={styles.container}>
@@ -178,6 +101,7 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
 
+        {/* Free Plan Card */}
         <View style={styles.plansContainer}>
           <PlanCard
             name={SUBSCRIPTION_PLANS.FREE.name}
@@ -185,38 +109,43 @@ export default function SubscriptionScreen() {
             billingCycle={SUBSCRIPTION_PLANS.FREE.billingCycle}
             features={SUBSCRIPTION_PLANS.FREE.features}
             isCurrentPlan={!isPremium}
-            onSelect={() => handleSelectPlan('free')}
+            onSelect={() => {}}
           />
 
-          <PlanCard
-            name={SUBSCRIPTION_PLANS.MONTHLY.name}
-            price={SUBSCRIPTION_PLANS.MONTHLY.price}
-            billingCycle={SUBSCRIPTION_PLANS.MONTHLY.billingCycle}
-            features={SUBSCRIPTION_PLANS.MONTHLY.features}
-            isCurrentPlan={isPremium && currentSubscription?.billing_cycle === 'monthly'}
-            onSelect={() => handleSelectPlan('monthly')}
-          />
+          {/* RevenueCat Packages - Dynamically Loaded */}
+          {packagesError && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                Failed to load subscription options. {packagesError}
+              </Text>
+            </View>
+          )}
 
-          <PlanCard
-            name={SUBSCRIPTION_PLANS.YEARLY.name}
-            price={SUBSCRIPTION_PLANS.YEARLY.price}
-            billingCycle={SUBSCRIPTION_PLANS.YEARLY.billingCycle}
-            features={SUBSCRIPTION_PLANS.YEARLY.features}
-            badge={SUBSCRIPTION_PLANS.YEARLY.badge}
-            isPopular={true}
-            isCurrentPlan={isPremium && currentSubscription?.billing_cycle === 'yearly'}
-            onSelect={() => handleSelectPlan('yearly')}
-          />
+          {packages.length === 0 && !packagesLoading && !packagesError && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                No subscription packages available. Please check your RevenueCat configuration.
+              </Text>
+            </View>
+          )}
 
-          <PlanCard
-            name={SUBSCRIPTION_PLANS.LIFETIME.name}
-            price={SUBSCRIPTION_PLANS.LIFETIME.price}
-            billingCycle={SUBSCRIPTION_PLANS.LIFETIME.billingCycle}
-            features={SUBSCRIPTION_PLANS.LIFETIME.features}
-            badge={SUBSCRIPTION_PLANS.LIFETIME.badge}
-            isCurrentPlan={isPremium && currentSubscription?.billing_cycle === 'lifetime'}
-            onSelect={() => handleSelectPlan('lifetime')}
-          />
+          {packages.map((pkg, index) => {
+            // Determine if this package should be marked as popular (usually annual/yearly)
+            const isPopular = pkg.product.identifier.toLowerCase().includes('annual') ||
+                             pkg.product.identifier.toLowerCase().includes('yearly') ||
+                             pkg.identifier.toLowerCase().includes('annual') ||
+                             pkg.identifier.toLowerCase().includes('yearly');
+
+            return (
+              <RevenueCatPackageCard
+                key={pkg.identifier}
+                package={pkg}
+                isPopular={isPopular}
+                isCurrentPlan={isPremium}
+                onSelect={() => handleSelectPackage(pkg)}
+              />
+            );
+          })}
         </View>
 
         <View style={styles.footer}>
@@ -254,16 +183,19 @@ export default function SubscriptionScreen() {
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Confirm your subscription?</Text>
 
-            {selectedPlan && (
+            {selectedPackage && (
               <View style={styles.confirmDetails}>
                 <Text style={styles.confirmPlan}>
-                  {SUBSCRIPTION_PLANS[selectedPlan.toUpperCase() as keyof typeof SUBSCRIPTION_PLANS].name}
+                  {selectedPackage.product.title}
                 </Text>
                 <Text style={styles.confirmPrice}>
-                  ${SUBSCRIPTION_PLANS[selectedPlan.toUpperCase() as keyof typeof SUBSCRIPTION_PLANS].price.toFixed(2)}
-                  {SUBSCRIPTION_PLANS[selectedPlan.toUpperCase() as keyof typeof SUBSCRIPTION_PLANS].billingCycle !== 'lifetime' &&
-                    `/${SUBSCRIPTION_PLANS[selectedPlan.toUpperCase() as keyof typeof SUBSCRIPTION_PLANS].billingCycle}`}
+                  {selectedPackage.product.priceString}
                 </Text>
+                {selectedPackage.product.description && (
+                  <Text style={styles.confirmDescription}>
+                    {selectedPackage.product.description}
+                  </Text>
+                )}
               </View>
             )}
 
@@ -437,6 +369,26 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: '#7C9DD9',
+  },
+  confirmDescription: {
+    fontSize: 14,
+    color: '#9BA8BA',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    backgroundColor: '#2A1F1F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#4A2F2F',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#FF6B6B',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   modalButtons: {
     flexDirection: 'row',

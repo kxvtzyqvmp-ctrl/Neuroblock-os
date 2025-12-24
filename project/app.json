@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.harmonicminds.neuroblockos"
+      "bundleIdentifier": "com.harmonicminds.dopaminedetox"
     },
     "android": {
-      "package": "com.harmonicminds.neuroblockos",
+      "package": "com.harmonicminds.dopaminedetox",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0B0B0B"

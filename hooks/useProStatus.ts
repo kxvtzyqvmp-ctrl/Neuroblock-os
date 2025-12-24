@@ -57,7 +57,8 @@ export function useProStatus(): ProStatus {
       }
 
       const customerInfo = await Purchases.getCustomerInfo();
-      const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
+      // Check for pro_access entitlement (matches RevenueCat configuration)
+      const isPro = customerInfo.entitlements.active['pro_access'] !== undefined;
       setHasPro(isPro);
     } catch (error) {
       console.warn('[useProStatus] Error checking pro status (this is OK in Expo Go):', error);
@@ -83,7 +84,8 @@ export function useProStatus(): ProStatus {
       if (Purchases) {
         try {
           const listener = Purchases.addCustomerInfoUpdateListener((customerInfo: any) => {
-            const isPro = customerInfo.entitlements.active['Pro'] !== undefined;
+            // Check for pro_access entitlement (matches RevenueCat configuration)
+            const isPro = customerInfo.entitlements.active['pro_access'] !== undefined;
             setHasPro(isPro);
           });
 

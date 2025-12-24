@@ -33,6 +33,7 @@ import {
   Star,
   Shield,
   Crown,
+  ExternalLink,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AuroraBackground from '@/components/shared/AuroraBackground';
@@ -78,7 +79,7 @@ export default function SettingsScreen() {
   const handleLeaveReview = () => {
     const reviewUrl = Platform.select({
       ios: 'https://apps.apple.com/app/id123456789',
-      android: 'https://play.google.com/store/apps/details?id=com.harmonicminds.neuroblockos',
+      android: 'https://play.google.com/store/apps/details?id=com.harmonicminds.dopaminedetox',
       default: 'https://neuroblockos.app/reviews',
     });
     Linking.openURL(reviewUrl);
@@ -114,7 +115,7 @@ export default function SettingsScreen() {
           icon: HelpCircle,
           label: 'Help Center',
           color: '#7C9DD9',
-          action: () => Linking.openURL('https://neuroblockos.app/help'),
+          route: '/help',
         },
         {
           icon: Share2,
@@ -161,7 +162,8 @@ export default function SettingsScreen() {
           icon: Shield,
           label: 'Privacy Policy',
           color: '#8E89FB',
-          action: () => Linking.openURL('https://neuroblockos.app/privacy'),
+          action: () => Linking.openURL('https://doc-hosting.flycricket.io/neuroblock-os-privacy-policy/5877a8d1-2159-4f77-b15f-2d55dd9327b9/privacy'),
+          hasExternalIcon: true,
         },
       ],
     },
@@ -187,6 +189,7 @@ export default function SettingsScreen() {
             <View style={styles.itemsContainer}>
               {section.items.map((item, itemIndex) => {
                 const Icon = item.icon;
+                const hasExternalIcon = 'hasExternalIcon' in item && item.hasExternalIcon;
                 return (
                   <TouchableOpacity
                     key={itemIndex}
@@ -207,6 +210,13 @@ export default function SettingsScreen() {
                       <Icon color={item.color} size={20} strokeWidth={2} />
                     </View>
                     <Text style={styles.itemLabel}>{item.label}</Text>
+                    {hasExternalIcon && (
+                      <ExternalLink
+                        color="#6B7A8F"
+                        size={16}
+                        strokeWidth={2}
+                      />
+                    )}
                   </TouchableOpacity>
                 );
               })}

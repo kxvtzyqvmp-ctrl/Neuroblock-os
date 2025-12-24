@@ -8,11 +8,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Crown, Check, Sparkles, Shield, Zap } from 'lucide-react-native';
 import { useAppState } from '@/contexts/AppStateContext';
 import { useProStatus } from '@/hooks/useProStatus';
+import { useRevenueCat } from '@/hooks/useRevenueCat';
+import RevenueCatPackageCard from '@/components/subscription/RevenueCatPackageCard';
 import AuroraBackground from '@/components/shared/AuroraBackground';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -37,7 +39,9 @@ const FEATURES = [
 export default function PaywallScreen() {
   const router = useRouter();
   const { setHasSubscription } = useAppState();
-  const { hasPro, isLoading: proLoading } = useProStatus();
+  const { hasPro, isLoading: proLoading, refresh: refreshProStatus } = useProStatus();
+  const { packages, isLoading: packagesLoading, error: packagesError, purchasePackage, restorePurchases } = useRevenueCat();
+  const [selectedPackage, setSelectedPackage] = useState<any>(null);
   const [isSubscribing, setIsSubscribing] = useState(false);
 
   // If user already has subscription, redirect to home
@@ -46,26 +50,34 @@ export default function PaywallScreen() {
       setHasSubscription(true);
       router.replace('/home');
     }
-  }, [hasPro]);
+  }, [hasPro, setHasSubscription, router]);
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (pkg?: any) => {
+    if (!pkg && packages.length > 0) {
+      // Default to first package if none selected
+      pkg = packages[0];
+    }
+
+    if (!pkg) {
+      Alert.alert('Error', 'No subscription package available. Please try again later.');
+      return;
+    }
+
     setIsSubscribing(true);
     
     try {
-      // TODO: Integrate RevenueCat subscription flow
-      // For now, this is a placeholder that bypasses for testing
+      const success = await purchasePackage(pkg);
       
-      // Simulate subscription process
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // In production, check RevenueCat subscription status here
-      // For testing: Set subscription status
-      await setHasSubscription(true);
-      
-      // Navigate to home
-      router.replace('/home');
+      if (success) {
+        await refreshProStatus();
+        await setHasSubscription(true);
+        router.replace('/home');
+      } else {
+        setIsSubscribing(false);
+      }
     } catch (error) {
       console.error('[Paywall] Error subscribing:', error);
+      Alert.alert('Error', 'Failed to process subscription. Please try again.');
       setIsSubscribing(false);
     }
   };
@@ -74,22 +86,24 @@ export default function PaywallScreen() {
     setIsSubscribing(true);
     
     try {
-      // TODO: Restore purchases via RevenueCat
-      // For now, just check current status
-      if (hasPro) {
+      const success = await restorePurchases();
+      
+      if (success) {
+        await refreshProStatus();
         await setHasSubscription(true);
         router.replace('/home');
-      } else {
-        alert('No active subscription found.');
       }
     } catch (error) {
       console.error('[Paywall] Error restoring:', error);
+      Alert.alert('Error', 'Failed to restore purchases. Please try again.');
     } finally {
       setIsSubscribing(false);
     }
   };
 
-  if (proLoading) {
+  const loading = proLoading || packagesLoading;
+
+  if (loading) {
     return (
       <View style={styles.container}>
         <AuroraBackground />
@@ -136,36 +150,65 @@ export default function PaywallScreen() {
           })}
         </View>
 
-        {/* Pricing */}
-        <View style={styles.pricingContainer}>
-          <View style={styles.priceRow}>
-            <Text style={styles.priceAmount}>$4.99</Text>
-            <Text style={styles.pricePeriod}>/month</Text>
+        {/* Pricing - RevenueCat Packages */}
+        {packagesError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>
+              Failed to load subscription options. {packagesError}
+            </Text>
           </View>
-          <Text style={styles.priceNote}>Cancel anytime</Text>
-        </View>
+        )}
+
+        {packages.length === 0 && !packagesLoading && !packagesError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>
+              No subscription packages available. Please check your RevenueCat configuration.
+            </Text>
+          </View>
+        )}
+
+        {packages.length > 0 && (
+          <View style={styles.packagesContainer}>
+            {packages.map((pkg) => {
+              const isPopular = pkg.product.identifier.toLowerCase().includes('annual') ||
+                               pkg.product.identifier.toLowerCase().includes('yearly');
+              
+              return (
+                <RevenueCatPackageCard
+                  key={pkg.identifier}
+                  package={pkg}
+                  isPopular={isPopular}
+                  isCurrentPlan={false}
+                  onSelect={() => handleSubscribe(pkg)}
+                />
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom actions */}
       <View style={styles.bottomContainer}>
-        <TouchableOpacity
-          style={styles.subscribeButton}
-          onPress={handleSubscribe}
-          disabled={isSubscribing}
-        >
-          <LinearGradient
-            colors={['#7C9DD9', '#9B8AFB']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientButton}
+        {packages.length > 0 && (
+          <TouchableOpacity
+            style={styles.subscribeButton}
+            onPress={() => handleSubscribe()}
+            disabled={isSubscribing}
           >
-            {isSubscribing ? (
-              <ActivityIndicator color="#E8EDF4" />
-            ) : (
-              <Text style={styles.subscribeText}>Subscribe Now</Text>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={['#7C9DD9', '#9B8AFB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.gradientButton}
+            >
+              {isSubscribing ? (
+                <ActivityIndicator color="#E8EDF4" />
+              ) : (
+                <Text style={styles.subscribeText}>Subscribe Now</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.restoreButton}
@@ -302,6 +345,24 @@ const styles = StyleSheet.create({
     color: '#9BA8BA',
     fontSize: 16,
     fontWeight: '500',
+  },
+  packagesContainer: {
+    gap: 20,
+    marginBottom: 40,
+  },
+  errorContainer: {
+    backgroundColor: '#2A1F1F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#4A2F2F',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#FF6B6B',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 
